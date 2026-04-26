@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from clickhouse_driver import Client
 from typing import List, Optional
 from datetime import datetime
@@ -7,25 +7,27 @@ import uuid
 import os
 
 # ===== Configuration =====
+# Mặc định là localhost, nhưng khi chạy thực tế sẽ trỏ tới IP của Linux VM
 CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
 CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", 9000))
 
 # ===== Initialize FastAPI App =====
 app = FastAPI(
     title="PM System Backend",
-    description="API for Log Collection and Production Analysis",
-    version="1.1.0"
+    description="API for Log Collection and Production Analysis (ClickHouse Version)",
+    version="1.3.0"
 )
 
 # ===== ClickHouse Connection =====
-try:
-    clickhouse_client = Client(CLICKHOUSE_HOST, port=CLICKHOUSE_PORT)
-    # Check connection
-    clickhouse_client.execute("SELECT 1")
-    print(f"✓ Connected to ClickHouse at {CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}")
-except Exception as e:
-    print(f"✗ Failed to connect to ClickHouse: {e}")
-    clickhouse_client = None
+def get_clickhouse_client():
+    try:
+        client = Client(CLICKHOUSE_HOST, port=CLICKHOUSE_PORT)
+        # Kiểm tra kết nối nhanh (ping)
+        client.execute("SELECT 1")
+        return client
+    except Exception as e:
+        print(f"✗ Failed to connect to ClickHouse at {CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}: {e}")
+        return None
 
 # ===== Data Models =====
 
@@ -66,17 +68,20 @@ class SystemLogInput(BaseModel):
 
 @app.get("/health")
 def health_check():
-    db_status = "healthy" if clickhouse_client else "disconnected"
+    client = get_clickhouse_client()
+    db_status = "healthy" if client else "disconnected"
     return {
         "status": "healthy",
         "database": db_status,
+        "database_host": CLICKHOUSE_HOST,
         "timestamp": datetime.now()
     }
 
 @app.post("/api/production/submit")
 async def submit_pcb_result(data: PCBResultInput):
     """Gửi kết quả test PCB và các bước chi tiết lên Database"""
-    if not clickhouse_client:
+    client = get_clickhouse_client()
+    if not client:
         raise HTTPException(status_code=503, detail="Database not connected")
     
     pcb_id = uuid.uuid4()
@@ -97,7 +102,7 @@ async def submit_pcb_result(data: PCBResultInput):
             data.file_path
         ]]
         
-        clickhouse_client.execute(
+        client.execute(
             "INSERT INTO pcb_results (id, channel_id, model_id, pid, fid, pcba_partno, start_time, end_time, test_time, result, file_path) VALUES",
             pcb_row
         )
@@ -117,7 +122,7 @@ async def submit_pcb_result(data: PCBResultInput):
                     s.result
                 ])
             
-            clickhouse_client.execute(
+            client.execute(
                 "INSERT INTO test_steps (pcb_result_id, step_type, step_number, step_name, value, spec_min, spec_max, result) VALUES",
                 steps_rows
             )
@@ -134,7 +139,8 @@ async def submit_pcb_result(data: PCBResultInput):
 @app.post("/api/system/logs")
 async def ingest_system_logs(logs: List[SystemLogInput]):
     """Ingest system logs into ClickHouse"""
-    if not clickhouse_client:
+    client = get_clickhouse_client()
+    if not client:
         raise HTTPException(status_code=503, detail="Database not connected")
     
     try:
@@ -151,7 +157,7 @@ async def ingest_system_logs(logs: List[SystemLogInput]):
                 log.device_id
             ])
             
-        clickhouse_client.execute(
+        client.execute(
             "INSERT INTO system_logs (timestamp, level, message, line_id, station_id, channel_id, device_id) VALUES",
             rows
         )
@@ -160,19 +166,13 @@ async def ingest_system_logs(logs: List[SystemLogInput]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ===== Initialization =====
-def init_db():
-    if not clickhouse_client:
-        return
-    
-    # Ở đây chúng ta có thể đọc file init_db.sql để chạy
-    # Nhưng vì ClickHouse Python client chạy script phức tạp hơi khó, 
-    # chúng ta sẽ ưu tiên chạy qua terminal hoặc từng câu lệnh đơn lẻ.
-    print("Pre-initialization check done.")
-
 @app.on_event("startup")
 def startup_event():
-    init_db()
+    client = get_clickhouse_client()
+    if client:
+        print(f"✓ Connected to ClickHouse at {CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}")
+    else:
+        print(f"⚠ Warning: Could not connect to ClickHouse at {CLICKHOUSE_HOST}")
 
 if __name__ == "__main__":
     import uvicorn
