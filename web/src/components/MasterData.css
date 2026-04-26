@@ -1,0 +1,50 @@
+/* Custom Styles for MasterData AntD transition */
+.master-data-antd {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.master-entity-tabs {
+  padding: 12px 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.entity-pill {
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.3s;
+  white-space: nowrap;
+  color: #94a3b8;
+}
+
+.entity-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.entity-pill.active {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #6366f1;
+  color: #818cf8;
+}
+
+.ant-table {
+  background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.02) !important;
+  color: #64748b !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02) !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.02) !important;
+}

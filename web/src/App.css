@@ -1,52 +1,68 @@
-.app {
+/* Ant Design Customizations & Sidebar Styles */
+.main-sidebar {
+  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.sidebar-logo {
+  height: 64px;
   display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background-color: #f5f5f5;
+  align-items: center;
+  padding: 0 24px;
+  gap: 12px;
+  background: #001529;
 }
 
-.container {
-  flex: 1;
-  max-width: 1400px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 20px;
+.logo-icon {
+  font-size: 24px;
 }
 
-/* Navigation Tabs */
-.nav-tabs {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  border-bottom: 2px solid #ecf0f1;
+.logo-text {
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(to right, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.tab-button {
-  padding: 12px 20px;
-  background-color: transparent;
-  color: #7f8c8d;
-  border: none;
-  border-bottom: 3px solid transparent;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.tab-button:hover {
-  color: #34495e;
-}
-
-.tab-button.active {
-  color: #3498db;
-  border-bottom-color: #3498db;
-}
-
-.footer {
-  background-color: #34495e;
-  color: #bdc3c7;
-  text-align: center;
-  padding: 20px;
+.sidebar-footer-status {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: auto;
+}
+
+.status-label {
   font-size: 12px;
+  color: #94a3b8;
+}
+
+.main-content-layout {
+  padding: 24px;
+  background: #0f172a;
+  min-height: 280px;
+}
+
+.content-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* Scrollbar and global dark fixes */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ant-layout-sider-trigger {
+  background: #1e293b !important;
 }
