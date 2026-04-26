@@ -1,0 +1,18 @@
+<clickhouse>
+    <logger>
+        <level>information</level>
+        <log>d:/1. Project/PM System/clickhouse/logs/clickhouse-server.log</log>
+        <errorlog>d:/1. Project/PM System/clickhouse/logs/clickhouse-server.err.log</errorlog>
+        <size>1000M</size>
+        <count>10</count>
+    </logger>
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+    <listen_host>::</listen_host>
+    <path>d:/1. Project/PM System/clickhouse/data/</path>
+    <tmp_path>d:/1. Project/PM System/clickhouse/tmp/</tmp_path>
+    <users_config>d:/1. Project/PM System/clickhouse/config/users.xml</users_config>
+    <default_profile>default</default_profile>
+    <default_database>default</default_database>
+    <timezone>Asia/Ho_Chi_Minh</timezone>
+</clickhouse>

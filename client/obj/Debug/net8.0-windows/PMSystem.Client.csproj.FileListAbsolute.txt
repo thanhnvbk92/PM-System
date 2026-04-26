@@ -33,3 +33,4 @@ D:\1. Project\PM System\client\obj\Debug\net8.0-windows\refint\PMSystem.Client.d
 D:\1. Project\PM System\client\obj\Debug\net8.0-windows\PMSystem.Client.pdb
 D:\1. Project\PM System\client\obj\Debug\net8.0-windows\PMSystem.Client.genruntimeconfig.cache
 D:\1. Project\PM System\client\obj\Debug\net8.0-windows\ref\PMSystem.Client.dll
+D:\1. Project\PM System\client\obj\Debug\net8.0-windows\PMSystem.Client.sourcelink.json

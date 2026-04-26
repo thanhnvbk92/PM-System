@@ -46,6 +46,12 @@ namespace PMSystem.Client.Services
             var directory = Path.GetDirectoryName(filePath);
             var fileName = Path.GetFileName(filePath);
 
+            if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(fileName))
+            {
+                _logger.Error($"Could not determine directory or filename for: {filePath}");
+                return;
+            }
+
             _watcher = new FileSystemWatcher(directory)
             {
                 Filter = fileName,

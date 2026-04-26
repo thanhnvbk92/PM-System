@@ -47,7 +47,7 @@ namespace PMSystem.Client.ViewModels
             _logger = Log.ForContext<MainViewModel>();
 
             // Check server health on startup
-            CheckServerHealth();
+            _ = CheckServerHealth();
         }
 
         [RelayCommand]

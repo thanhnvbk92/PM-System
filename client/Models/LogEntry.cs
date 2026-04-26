@@ -10,9 +10,9 @@ namespace PMSystem.Client.Models
     {
         public DateTime Timestamp { get; set; }
         public string Level { get; set; } = "INFO"; // DEBUG, INFO, WARNING, ERROR, CRITICAL
-        public string Message { get; set; }
-        public string Source { get; set; } // e.g., "Application.log", "System.log"
-        public string Host { get; set; }
+        public required string Message { get; set; }
+        public required string Source { get; set; } // e.g., "Application.log", "System.log"
+        public required string Host { get; set; }
         public string? User { get; set; }
         public Dictionary<string, string> CustomFields { get; set; } = new();
 
