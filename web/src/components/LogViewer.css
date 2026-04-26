@@ -1,0 +1,142 @@
+.log-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.search-form {
+  margin-top: 15px;
+}
+
+.filters {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.filter-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 150px;
+}
+
+.filter-group label {
+  color: #34495e;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.filter-group input,
+.filter-group select {
+  padding: 8px 12px;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  font-size: 14px;
+  background-color: white;
+  color: #34495e;
+  flex: 1;
+  min-width: 100px;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+/* Table Styles */
+.table-container {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+thead {
+  background-color: #ecf0f1;
+}
+
+th {
+  color: #2c3e50;
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  border-bottom: 2px solid #bdc3c7;
+}
+
+td {
+  padding: 12px;
+  border-bottom: 1px solid #ecf0f1;
+  color: #34495e;
+  font-size: 14px;
+}
+
+tbody tr {
+  transition: background-color 0.2s;
+}
+
+tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+tbody tr:last-child td {
+  border-bottom: 1px solid #bdc3c7;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge.info {
+  background-color: #d6eaf8;
+  color: #1a5490;
+}
+
+.badge.warning {
+  background-color: #fef5e7;
+  color: #7d6608;
+}
+
+.badge.danger {
+  background-color: #fadbd8;
+  color: #78281f;
+}
+
+.badge.success {
+  background-color: #d5f4e6;
+  color: #145a32;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .filters {
+    flex-direction: column;
+  }
+
+  .filter-group {
+    width: 100%;
+  }
+
+  .table-container {
+    font-size: 12px;
+  }
+
+  table td {
+    padding: 8px;
+  }
+}
