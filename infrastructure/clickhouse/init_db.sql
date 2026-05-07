@@ -71,13 +71,14 @@ CREATE TABLE IF NOT EXISTS pcb_results (
     channel_id UInt32,
     model_id UInt32,
     pid String,
-    fid String,
-    pcba_partno String,
+    fid Nullable(String),
+    pcba_partno Nullable(String),
     start_time DateTime64(3),
-    end_time DateTime64(3),
-    test_time Float64,
-    result Enum8('PASS' = 1, 'FAIL' = 2),
+    end_time Nullable(DateTime64(3)),
+    test_time Nullable(Float64),
+    result Enum8('OK' = 1, 'NG' = 2),
     file_path String,
+    jobfile String,
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree() 
 PARTITION BY toYYYYMM(start_time)
@@ -85,13 +86,13 @@ ORDER BY (channel_id, start_time);
 
 CREATE TABLE IF NOT EXISTS test_steps (
     pcb_result_id UUID,
-    step_type String,
+    step_type Nullable(String),
     step_number UInt32,
-    step_name String,
-    value Float64,
-    spec_min Float64,
-    spec_max Float64,
-    result Enum8('PASS' = 1, 'FAIL' = 2)
+    step_name Nullable(String),
+    value Nullable(Float64),
+    spec_min Nullable(Float64),
+    spec_max Nullable(Float64),
+    result Enum8('OK' = 1, 'NG' = 2)
 ) ENGINE = MergeTree()
 ORDER BY (pcb_result_id, step_number);
 

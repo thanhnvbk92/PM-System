@@ -24,23 +24,30 @@
 - `name` (string): Line 1, Line 2...
 - `remark` (string)
 
-### 1.5. Bảng `stations` (Trạm)
+### 1.5. Bảng `station_types` (Loại trạm)
+- `id` (int, PK)
+- `name` (string): FCT,ICT,X-Ray,Underfill,Curing,Router,...
+- `remark` (string)
+
+### 1.6. Bảng `stations` (Trạm)
 - `id` (int, PK)
 - `line_id` (int, FK): Liên kết tới bảng lines
 - `model_group_id` (int, FK): Liên kết tới bảng model_group
-- `station_type` (string): Power, RF4G, GPS_Audio...
+- `station_type_id` (int, FK): Liên kết tới bảng station_types
 - `name` (string)
 
-### 1.6. Bảng `channels` (Kênh)
+### 1.7. Bảng `channels` (Kênh)
 - `id` (int, PK)
 - `station_id` (int, FK): Liên kết tới bảng stations
 - `name` (string): Power#1, Power#2...
+- `machine_partno` (string)
 - `ip_address` (string)
 - `mac_address` (string)
 - `gmes_name` (string)
 - `status` (string): online/offline
+- `remark` (string)
 
-### 1.7. Bảng `device_types` (Loại thiết bị)
+### 1.8. Bảng `device_types` (Loại thiết bị)
 - `id` (int, PK)
 - `name` (string): Equipment, Jig, Tool...
 - `remark` (string)
@@ -63,27 +70,28 @@
 ## 2. Dữ liệu Sản xuất & Kiểm tra (Production Data)
 
 ### 2.1. Bảng `pcb_results` (Kết quả tổng quát PCB)
-- `id` (UUID/Int, PK)
-- `channel_id` (int, FK)
-- `model_id` (int, FK)
-- `pid` (string)
-- `fid` (string)
-- `pcba_partno` (string)
-- `start_time` (DateTime)
-- `end_time` (DateTime)
-- `test_time` (double)
-- `result` (string): PASS/FAIL
-- `file_path` (string)
+- `id` (UUID, PK): Không được NULL
+- `channel_id` (int, FK): Không được NULL
+- `model_id` (int, FK): Không được NULL
+- `pid` (string): Không được NULL
+- `fid` (string): Nullable
+- `pcba_partno` (string): Nullable
+- `start_time` (DateTime): Không được NULL
+- `end_time` (DateTime): Nullable
+- `test_time` (double): Nullable
+- `result` (string): OK/NG (Không được NULL)
+- `file_path` (string): Không được NULL
+- `jobfile` (string): Không được NULL
 
 ### 2.2. Bảng `test_steps` (Chi tiết các bước kiểm tra)
-- `pcb_result_id` (int, FK): Liên kết tới pcb_results
-- `step_type` (string): NG, Power_Current, TxPower...
-- `step_number` (int)
-- `step_name` (string)
-- `value` (double)
-- `spec_min` (double)
-- `spec_max` (double)
-- `result` (string): PASS/FAIL
+- `pcb_result_id` (UUID, FK): Liên kết tới pcb_results
+- `step_type` (string): Nullable
+- `step_number` (int): Không được NULL
+- `step_name` (string): Nullable
+- `value` (double): Nullable
+- `spec_min` (double): Nullable
+- `spec_max` (double): Nullable
+- `result` (string): OK/NG (Không được NULL)
 
 ---
 

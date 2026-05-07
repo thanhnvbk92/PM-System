@@ -66,20 +66,21 @@ CREATE TABLE IF NOT EXISTS devices (
 
 -- 2. Production Data Tables
 
-CREATE TYPE test_result AS ENUM ('PASS', 'FAIL');
+CREATE TYPE test_result AS ENUM ('OK', 'NG');
 
 CREATE TABLE IF NOT EXISTS pcb_results (
     id UUID PRIMARY KEY,
     channel_id INTEGER REFERENCES channels(id),
     model_id INTEGER REFERENCES models(id),
-    pid VARCHAR(255),
+    pid VARCHAR(255) NOT NULL,
     fid VARCHAR(255),
     pcba_partno VARCHAR(255),
     start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP,
     test_time DOUBLE PRECISION,
     result test_result NOT NULL,
-    file_path TEXT,
+    file_path TEXT NOT NULL,
+    jobfile TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -87,7 +88,7 @@ CREATE TABLE IF NOT EXISTS test_steps (
     id SERIAL PRIMARY KEY,
     pcb_result_id UUID REFERENCES pcb_results(id),
     step_type VARCHAR(100),
-    step_number INTEGER,
+    step_number INTEGER NOT NULL,
     step_name VARCHAR(255),
     value DOUBLE PRECISION,
     spec_min DOUBLE PRECISION,

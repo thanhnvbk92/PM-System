@@ -38,7 +38,7 @@ def seed_data():
         offset = random.randint(0, 1440) # Last 24 hours
         start_time = now - timedelta(minutes=offset)
         end_time = start_time + timedelta(seconds=random.randint(20, 60))
-        result = random.choice(['PASS', 'PASS', 'FAIL', 'PASS']) # 75% PASS
+        result = random.choice(['OK', 'OK', 'NG', 'OK']) # 75% OK
         
         logs_data.append([
             pcb_id,
@@ -51,11 +51,12 @@ def seed_data():
             end_time,
             (end_time - start_time).total_seconds(),
             result,
-            "/mock/path.xml"
+            "/mock/path.xml",
+            "sample_job.xml"
         ])
 
     client.execute(
-        "INSERT INTO pcb_results (id, channel_id, model_id, pid, fid, pcba_partno, start_time, end_time, test_time, result, file_path) VALUES",
+        "INSERT INTO pcb_results (id, channel_id, model_id, pid, fid, pcba_partno, start_time, end_time, test_time, result, file_path, jobfile) VALUES",
         logs_data
     )
     print(f"Success: {len(logs_data)} valid records seeded.")
