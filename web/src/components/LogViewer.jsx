@@ -45,7 +45,7 @@ const LogViewer = ({ isServerConnected }) => {
     setLoading(true);
     setLogs([]); // Clear old logs immediately when searching
     const result = await searchLogs({ 
-        limit: 100,
+        limit: 500,
         pid: filters.pid,
         line_id: filters.line_id,
         station_id: filters.station_id,
@@ -100,10 +100,10 @@ const LogViewer = ({ isServerConnected }) => {
           const station = masterData.stations.find(s => s.id === newRow.station_id);
           const channel = masterData.channels.find(c => c.id === newRow.channel_id);
           
-          newRow.line_name = line ? line.name : `Line ${newRow.line_id}`;
-          newRow.station_name = station ? station.name : `Station ${newRow.station_id}`;
-          newRow.channel_name = channel ? channel.name : `Channel ${newRow.channel_id}`;
-          newRow.ip = channel ? channel.ip_address : '-';
+          newRow.line_name = line ? line.name : (newRow.line_name || "N/A");
+          newRow.station_name = station ? station.name : (newRow.station_name || "N/A");
+          newRow.channel_name = channel ? channel.name : (newRow.channel_name || `CH ${newRow.channel_id}`);
+          newRow.ip = channel ? channel.ip_address : (newRow.ip || '-');
           newRow.timestamp = newRow.start_time; // For table display
 
           setLogs(prevLogs => [newRow, ...prevLogs.slice(0, 99)]);

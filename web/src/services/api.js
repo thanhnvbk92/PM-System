@@ -92,6 +92,24 @@ export const getStatsByResult = async (params = {}) => {
   }
 };
 
+export const getProductionTrends = async () => {
+  try {
+    const response = await apiClient.get('/api/stats/trends');
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const getChannelsStatus = async () => {
+  try {
+    const response = await apiClient.get('/api/stats/channel-status');
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 // Get hosts list
 export const getHostsList = async () => {
   try {

@@ -96,3 +96,70 @@ async def get_stats_by_result(
     except Exception as e:
         print(f"Error getting by-result: {e}")
         return []
+
+@router.get("/trends")
+async def get_production_trends():
+    client = get_clickhouse_client()
+    if not client: return {"months": [], "weeks": [], "days": []}
+    try:
+        # 12 Months Trend
+        query_months = """
+            SELECT toStartOfMonth(hour) as m, countMerge(total_count) as total
+            FROM pcb_stats_hourly
+            WHERE hour >= addMonths(now(), -12)
+            GROUP BY m ORDER BY m
+        """
+        # 5 Weeks Trend
+        query_weeks = """
+            SELECT toStartOfWeek(hour) as w, countMerge(total_count) as total
+            FROM pcb_stats_hourly
+            WHERE hour >= addWeeks(now(), -5)
+            GROUP BY w ORDER BY w
+        """
+        # 7 Days Trend
+        query_days = """
+            SELECT toDate(hour) as d, countMerge(total_count) as total
+            FROM pcb_stats_hourly
+            WHERE hour >= addDays(now(), -7)
+            GROUP BY d ORDER BY d
+        """
+        
+        res_m = client.execute(query_months)
+        res_w = client.execute(query_weeks)
+        res_d = client.execute(query_days)
+        
+        return {
+            "months": [{"date": r[0].strftime("%Y-%m"), "value": r[1]} for r in res_m],
+            "weeks": [{"date": r[0].strftime("%Y-W%W"), "value": r[1]} for r in res_w],
+            "days": [{"date": r[0].strftime("%m-%d"), "value": r[1]} for r in res_d]
+        }
+    except Exception as e:
+        print(f"Error getting trends: {e}")
+        return {"months": [], "weeks": [], "days": []}
+
+@router.get("/channel-status")
+async def get_channels_status():
+    client = get_clickhouse_client()
+    if not client: return {"total": 0, "online": 0, "offline": 0}
+    try:
+        # Lấy tổng số channel từ bảng master data
+        total_res = client.execute("SELECT count() FROM channels")
+        total = total_res[0][0] if total_res else 0
+        
+        # Một channel được coi là online nếu có log trong 10 phút qua
+        online_query = """
+            SELECT count(DISTINCT channel_id) 
+            FROM pcb_results 
+            WHERE start_time >= subtractMinutes(now(), 10)
+        """
+        online_res = client.execute(online_query)
+        online = online_res[0][0] if online_res else 0
+        
+        return {
+            "total": total,
+            "online": online,
+            "offline": max(0, total - online)
+        }
+    except Exception as e:
+        print(f"Error getting channel status: {e}")
+        return {"total": 0, "online": 0, "offline": 0}

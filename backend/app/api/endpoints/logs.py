@@ -34,11 +34,12 @@ async def search_logs(
                 s.name as station_name, 
                 c.name as channel_name,
                 c.ip_address as ip,
-                ng.step_name as step_ng
+                ng.step_name as step_ng,
+                l.channel_id
             FROM pcb_results l
             ANY LEFT JOIN channels c ON l.channel_id = c.id
-            ANY LEFT JOIN stations s ON l.station_id = s.id
-            ANY LEFT JOIN lines ln ON l.line_id = ln.id
+            ANY LEFT JOIN stations s ON c.station_id = s.id
+            ANY LEFT JOIN lines ln ON s.line_id = ln.id
             LEFT JOIN (
                 SELECT pcb_result_id, any(step_name) as step_name
                 FROM test_steps 
@@ -54,8 +55,11 @@ async def search_logs(
             {
                 "id": str(r[0]), "pid": r[1], "timestamp": r[2], "result": r[3], 
                 "file_path": r[4], "jobfile": r[5],
-                "line_name": r[6], "station_name": r[7], "channel_name": r[8],
-                "ip": r[9], "step_ng": r[10]
+                "line_name": r[6] if r[6] else "-", 
+                "station_name": r[7] if r[7] else "-", 
+                "channel_name": r[8] if r[8] else (f"Unknown (ID: {r[11]})" if r[11] else "Unknown"),
+                "ip": r[9] if r[9] else "-", 
+                "step_ng": r[10] if r[10] else "-"
             } for r in rows
         ]
     except Exception as e:

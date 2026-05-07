@@ -79,7 +79,10 @@ async def submit_pcb_result(data: PCBResultInput):
                 "test_time": data.test_time,
                 "result": data.result,
                 "file_path": data.file_path,
-                "jobfile": data.jobfile
+                "jobfile": data.jobfile,
+                "station_id": hierarchy["station_id"],
+                "line_id": hierarchy["line_id"],
+                "buyer_id": hierarchy["buyer_id"]
             }
         })
 
