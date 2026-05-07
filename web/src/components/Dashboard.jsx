@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Space, Button, Select, Skeleton, Empty } from 'antd';
+import { Row, Col, Card, Statistic, Space, Button, Select, Skeleton, Empty, Switch, Tag } from 'antd';
 import { 
   ArrowUpOutlined, 
   ArrowDownOutlined, 
@@ -20,8 +20,8 @@ const Dashboard = () => {
   const [buyerData, setBuyerData] = useState([]);
   const [resultData, setResultData] = useState([]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     const [sumRes, buyerRes, resultRes] = await Promise.all([
       getStatsSummary(filters),
       getStatsByBuyer(filters),
@@ -38,6 +38,39 @@ const Dashboard = () => {
   useEffect(() => {
     fetchData();
   }, [filters]);
+
+  // WebSocket for Real-time Dashboard updates
+  useEffect(() => {
+    let socket;
+    let throttleTimer;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname;
+    const port = window.location.port || (protocol === 'ws:' ? '8000' : '');
+    const url = `${protocol}//${host}${port ? ':' + port : ''}/ws/logs`;
+    
+    socket = new WebSocket(url);
+
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === 'NEW_RESULT') {
+        // Throttle: Don't refresh more than once every 5 seconds
+        if (!throttleTimer) {
+          throttleTimer = setTimeout(() => {
+            fetchData(true); // Silent refresh
+            throttleTimer = null;
+          }, 5000);
+        }
+      }
+    };
+
+    socket.onopen = () => console.log('Dashboard Live Mode Active');
+
+    return () => {
+      if (socket) socket.close();
+      if (throttleTimer) clearTimeout(throttleTimer);
+    };
+  }, []);
 
   // ECharts Options
   const buyerChartOption = {
@@ -105,7 +138,8 @@ const Dashboard = () => {
           />
         </Space>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={fetchData}>Refresh</Button>
+          <Tag color="cyan">Live Active</Tag>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>Refresh</Button>
           <Button danger onClick={clearFilters}>Clear Filters</Button>
         </Space>
       </div>

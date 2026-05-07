@@ -30,6 +30,15 @@ export const searchLogs = async (params = {}) => {
   }
 };
 
+export const getLogDetail = async (id) => {
+  try {
+    const response = await apiClient.get(`/api/logs/${id}`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 // Get log statistics
 export const getLogStatistics = async (startTime, endTime) => {
   try {

@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from app.core import config
+from app.core.websocket import manager
 from app.db.clickhouse import get_clickhouse_client
 from app.api.endpoints import production, statistics, master_data, logs
 
@@ -37,6 +38,16 @@ app.include_router(production.router)
 app.include_router(statistics.router)
 app.include_router(master_data.router)
 app.include_router(logs.router)
+
+@app.websocket("/ws/logs")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 @app.on_event("startup")
 def startup_event():

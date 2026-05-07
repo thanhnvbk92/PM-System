@@ -4,10 +4,8 @@ import {
   DashboardOutlined,
   SettingOutlined,
   DatabaseOutlined,
-  CloudServerOutlined,
-  UserOutlined,
-  BugOutlined
 } from '@ant-design/icons';
+import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import useStore from './store/useStore';
 import { checkHealth } from './services/api';
 import Header from './components/Header.jsx';
@@ -19,8 +17,12 @@ import './App.css';
 const { Content, Sider, Footer } = Layout;
 
 function App() {
-  const { activeTab, setActiveTab, isSidebarCollapsed, toggleSidebar } = useStore();
+  const { isSidebarCollapsed, toggleSidebar } = useStore();
   const [isServerConnected, setIsServerConnected] = React.useState(false);
+  const location = useLocation();
+
+  // Xác định key của menu dựa trên đường dẫn hiện tại
+  const currentPath = location.pathname.split('/')[1] || 'dashboard';
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -33,9 +35,9 @@ function App() {
   }, []);
 
   const menuItems = [
-    { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-    { key: 'master', icon: <SettingOutlined />, label: 'Master Data' },
-    { key: 'logs', icon: <DatabaseOutlined />, label: 'Log Viewer' },
+    { key: 'dashboard', icon: <DashboardOutlined />, label: <Link to="/dashboard">Dashboard</Link> },
+    { key: 'master', icon: <SettingOutlined />, label: <Link to="/master">Master Data</Link> },
+    { key: 'logs', icon: <DatabaseOutlined />, label: <Link to="/logs">Production Data</Link> },
   ];
 
   return (
@@ -64,10 +66,9 @@ function App() {
           
           <Menu
             theme="dark"
-            selectedKeys={[activeTab]}
+            selectedKeys={[currentPath]}
             mode="inline"
             items={menuItems}
-            onClick={({ key }) => setActiveTab(key)}
           />
 
           <div className="sidebar-footer-status">
@@ -86,9 +87,12 @@ function App() {
           <Header />
           <Content className="main-content-layout">
             <div className="content-inner">
-               {activeTab === 'dashboard' && <Dashboard isServerConnected={isServerConnected} />}
-               {activeTab === 'master' && <MasterData isServerConnected={isServerConnected} />}
-               {activeTab === 'logs' && <LogViewer isServerConnected={isServerConnected} />}
+               <Routes>
+                  <Route path="/dashboard" element={<Dashboard isServerConnected={isServerConnected} />} />
+                  <Route path="/master" element={<MasterData isServerConnected={isServerConnected} />} />
+                  <Route path="/logs" element={<LogViewer isServerConnected={isServerConnected} />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+               </Routes>
             </div>
           </Content>
           <Footer style={{ textAlign: 'center', opacity: 0.5, fontSize: '12px' }}>

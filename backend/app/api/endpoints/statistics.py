@@ -20,9 +20,24 @@ async def get_stats_summary(
     if station_id: where_clause += f" AND station_id = {station_id}"
 
     try:
-        total = client.execute(f"SELECT count() FROM pcb_results {where_clause}")[0][0]
-        errors = client.execute(f"SELECT count() FROM pcb_results {where_clause} AND result = 'NG'")[0][0]
-        models = client.execute(f"SELECT count(DISTINCT model_id) FROM pcb_results {where_clause}")[0][0]
+        # Truy vấn từ bảng tổng hợp (Materialized View) - Cực nhanh
+        query = f"""
+            SELECT 
+                countMerge(total_count) as total,
+                countMergeIf(total_count, result = 2) as errors
+            FROM pcb_stats_hourly
+            {where_clause}
+        """
+        res = client.execute(query)
+        total = res[0][0] if res else 0
+        errors = res[0][1] if res else 0
+        
+        # Model count vẫn cần query bảng gốc hoặc tạo MV riêng cho model. 
+        # Vì model_id có thể trùng lặp qua các giờ, nên count(DISTINCT) cần chính xác.
+        # Với 1 tỉ dòng, ta nên dùng uniq() để xấp xỉ hoặc một MV khác.
+        models_query = f"SELECT uniq(model_id) FROM pcb_results {where_clause}"
+        models = client.execute(models_query)[0][0]
+        
         success_rate = ((total - errors) / total * 100) if total > 0 else 100
         
         return {
@@ -41,13 +56,14 @@ async def get_stats_by_buyer(line_id: Optional[int] = Query(None), station_id: O
     if line_id: where_clause += f" AND line_id = {line_id}"
     if station_id: where_clause += f" AND station_id = {station_id}"
     try:
+        # Sử dụng bảng tổng hợp và JOIN trực tiếp với buyer
         query = f"""
-            SELECT b.name, count() as count FROM pcb_results l
-            INNER JOIN channels c ON l.channel_id = c.id
-            INNER JOIN stations s ON c.station_id = s.id
-            INNER JOIN lines ln ON s.line_id = ln.id
-            INNER JOIN buyer b ON ln.buyer_id = b.id
-            {where_clause} GROUP BY b.name ORDER BY count DESC
+            SELECT b.name, countMerge(total_count) as total 
+            FROM pcb_stats_hourly l
+            INNER JOIN buyer b ON l.buyer_id = b.id
+            {where_clause} 
+            GROUP BY b.name 
+            ORDER BY total DESC
         """
         result = client.execute(query)
         return [{"name": row[0], "value": row[1]} for row in result]
@@ -66,7 +82,15 @@ async def get_stats_by_result(
     if line_id: where_clause += f" AND line_id = {line_id}"
     if station_id: where_clause += f" AND station_id = {station_id}"
     try:
-        query = f"SELECT result, count() as count FROM pcb_results {where_clause} GROUP BY result"
+        # Sử dụng bảng tổng hợp - Không cần JOIN
+        query = f"""
+            SELECT 
+                CASE WHEN result = 1 THEN 'OK' ELSE 'NG' END as res_text,
+                countMerge(total_count) as total
+            FROM pcb_stats_hourly
+            {where_clause}
+            GROUP BY result
+        """
         result = client.execute(query)
         return [{"name": row[0], "value": row[1]} for row in result]
     except Exception as e:

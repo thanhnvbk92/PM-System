@@ -6,9 +6,9 @@ class TestStepInput(BaseModel):
     step_type: Optional[str] = None
     step_number: int
     step_name: Optional[str] = None
-    value: Optional[float] = None
-    spec_min: Optional[float] = None
-    spec_max: Optional[float] = None
+    value: Optional[str] = None
+    spec_min: Optional[str] = None
+    spec_max: Optional[str] = None
     result: str
 
 class PCBResultInput(BaseModel):

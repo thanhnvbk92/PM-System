@@ -90,9 +90,9 @@ CREATE TABLE IF NOT EXISTS test_steps (
     step_type VARCHAR(100),
     step_number INTEGER NOT NULL,
     step_name VARCHAR(255),
-    value DOUBLE PRECISION,
-    spec_min DOUBLE PRECISION,
-    spec_max DOUBLE PRECISION,
+    value VARCHAR(255),
+    spec_min VARCHAR(255),
+    spec_max VARCHAR(255),
     result test_result NOT NULL
 );
 

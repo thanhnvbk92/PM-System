@@ -1,53 +1,48 @@
-# Hướng dẫn Thiết lập và Triển khai Hệ thống PM System
+# PM System - Production Monitoring & Analytics
 
-Chào mừng bạn đến với dự án Hệ thống Thu thập và Phân tích Log Thời gian thực.
+Hệ thống quản lý và giám sát sản xuất thời gian thực, được thiết kế để xử lý quy mô dữ liệu lớn (hàng tỉ dòng) với độ trễ thấp.
 
-## 🚀 Mục lục
-1. [Kiến trúc hệ thống](#)
-2. [Yêu cầu môi trường](#yêu-cầu-môi-trường)
-3. [Thiết lập cơ sở dữ liệu (ClickHouse)](#thiết-lập-cơ-sở-dữ-liệu-clickhouse)
-4. [Khởi tạo Backend (Python/FastAPI)](#khởi-tạo-backend-pythonfastapi)
-5. [Triển khai toàn bộ hệ thống](#triển-khai-toàn-bộ-hệ-thống)
+## 🚀 Tính năng chính
+- **Dashboard Real-time**: Giám sát Yield, Success Rate và xu hướng sản xuất tức thì qua WebSockets.
+- **Production Data Explorer**: Xem nhật ký sản xuất chi tiết với chế độ "Live Mode".
+- **Master Data Management**: Quản lý phân cấp Chuyền (Line) -> Trạm (Station) -> Kênh (Channel) -> Thiết bị (Device).
+- **Big Data Ready**: Sử dụng ClickHouse với kiến trúc Materialized Views để đảm bảo tốc độ truy vấn trên hàng tỉ dòng dữ liệu.
+- **De-normalized Ingestion**: Cơ chế tự động phi chuẩn hóa dữ liệu khi ghi để tối ưu hóa hiệu năng Dashboard.
 
----
+## 🛠 Công nghệ sử dụng
+- **Backend**: Python, FastAPI, ClickHouse (OLAP), PostgreSQL/ClickHouse (Master Data).
+- **Frontend**: React, Ant Design, ECharts, Zustand (State Management).
+- **Communication**: REST API & WebSockets.
 
-## 1. Kiến trúc hệ thống
-Hệ thống được chia thành 4 thành phần chính:
-*   **ClientApp (C# WPF):** Thu thập log và gửi dữ liệu.
-*   **Server (Python/FastAPI):** API trung gian, nhận và xử lý dữ liệu.
-*   **Database (ClickHouse):** Lưu trữ và phân tích dữ liệu log hiệu năng cao.
-*   **Web Dashboard (React/Vue):** Giao diện người dùng để xem báo cáo.
+## 🏗 Cấu trúc dự án
+- `/backend`: Mã nguồn FastAPI và logic xử lý dữ liệu.
+  - `/app/api/endpoints`: Các API endpoints (Production, Statistics, Master Data).
+  - `/app/core`: Cấu hình hệ thống và quản lý WebSocket.
+  - `/app/db`: Kết nối cơ sở dữ liệu ClickHouse/Postgres.
+- `/web`: Mã nguồn giao diện React.
+  - `/src/components`: Các thành phần giao diện chính (Dashboard, LogViewer, MasterData).
+  - `/src/services`: Logic gọi API và WebSocket client.
 
-## 2. Yêu cầu môi trường
-*   **Docker:** Cần cài đặt Docker và Docker Compose.
-*   **Python:** Phiên bản 3.10+
-*   **C#:** .NET 6.0+
+## ⚙️ Cài đặt nhanh
+1. **Backend**:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   python main.py
+   ```
+2. **Setup Database (ClickHouse)**:
+   ```bash
+   python setup_mv.py  # Khởi tạo Materialized Views cho Dashboard
+   ```
+3. **Frontend**:
+   ```bash
+   cd web
+   npm install
+   npm run dev
+   ```
 
-## 3. Thiết lập cơ sở dữ liệu (ClickHouse)
-1.  **Chạy Docker Compose:**
-    ```bash
-    docker-compose up -d
-    ```
-2.  **Kiểm tra trạng thái:**
-    ```bash
-    docker-compose ps
-    ```
-    Đảm bảo container `pm_system_clickhouse` đang chạy.
-
-## 4. Khởi tạo Backend (Python/FastAPI)
-1.  **Cài đặt Dependencies:**
-    Di chuyển vào thư mục `backend/` và cài đặt các thư viện cần thiết:
-    ```bash
-    cd backend
-    pip install -r requirements.txt
-    ```
-2.  **Chạy Server:**
-    ```bash
-    uvicorn main:app --reload
-    ```
-
-## 5. Triển khai toàn bộ hệ thống
-Sau khi Backend và ClickHouse đã chạy ổn định, bạn sẽ tiếp tục phát triển ClientApp và Web Dashboard theo lộ trình đã định.
-
----
-*Lưu ý: Các bước này chỉ là hướng dẫn ban đầu. Vui lòng tham khảo `plan.md` để xem lộ trình chi tiết.*
+## 📈 Quy mô hệ thống
+Hệ thống hỗ trợ:
+- Kết nối đồng thời từ hàng trăm client đẩy dữ liệu (Ingestion).
+- 20+ kết nối view dashboard/logs đồng thời.
+- Lưu trữ và phân tích hàng tỉ dòng dữ liệu nhờ ClickHouse.

@@ -89,9 +89,9 @@ CREATE TABLE IF NOT EXISTS test_steps (
     step_type Nullable(String),
     step_number UInt32,
     step_name Nullable(String),
-    value Nullable(Float64),
-    spec_min Nullable(Float64),
-    spec_max Nullable(Float64),
+    value Nullable(String),
+    spec_min Nullable(String),
+    spec_max Nullable(String),
     result Enum8('OK' = 1, 'NG' = 2)
 ) ENGINE = MergeTree()
 ORDER BY (pcb_result_id, step_number);
