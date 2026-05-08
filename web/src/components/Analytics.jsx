@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Radio, Spin, Empty, message, Button, Tag } from 'antd';
-import { CloseCircleOutlined, FilterOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Typography, Radio, Spin, Empty, message, Button, Tag, DatePicker, Space } from 'antd';
+import { CloseCircleOutlined, FilterOutlined, CalendarOutlined } from '@ant-design/icons';
+const { RangePicker } = DatePicker;
+import dayjs from 'dayjs';
 import ReactECharts from 'echarts-for-react';
 import { getAnalyticsDashboard } from '../services/api';
 
@@ -16,6 +18,8 @@ const Analytics = () => {
     time_label: null
   });
 
+  const [customRange, setCustomRange] = useState(null);
+
   const [dashboardData, setDashboardData] = useState({
     trend: { time_labels: [], series: [] },
     by_line: [],
@@ -29,26 +33,58 @@ const Analytics = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [timeframe, filters]);
+  }, [timeframe, filters, customRange]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     const start = performance.now();
-    const params = { timeframe };
+    
+    let params = { timeframe };
+    
+    // Ưu tiên custom date range nếu người dùng đã chọn
+    if (customRange && customRange[0] && customRange[1]) {
+      params.start_date = customRange[0].format('YYYY-MM-DD');
+      params.end_date = customRange[1].format('YYYY-MM-DD');
+    }
+    // Ngược lại, nếu có click vào label thời gian trên biểu đồ
+    else if (filters.time_label) {
+      const label = filters.time_label;
+      // Case: YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(label)) {
+        params.start_date = label;
+        params.end_date = label;
+      } 
+      // Case: YYYY-Wxx (Tuần)
+      else if (/^\d{4}-W\d+$/.test(label)) {
+        const [year, weekPart] = label.split('-W');
+        const weekNum = parseInt(weekPart);
+        // Tính toán ngày đầu tuần (Thứ 2)
+        const d = new Date(year, 0, 1 + (weekNum - 1) * 7);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff));
+        const sunday = new Date(new Date(monday).setDate(monday.getDate() + 6));
+        
+        params.start_date = monday.toISOString().split('T')[0];
+        params.end_date = sunday.toISOString().split('T')[0];
+      }
+      // Case: YYYY-MM (Tháng)
+      else if (/^\d{4}-\d{2}$/.test(label)) {
+        const [year, month] = label.split('-');
+        const startDate = `${year}-${month}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+        
+        params.start_date = startDate;
+        params.end_date = endDate;
+      }
+    }
+
     if (filters.line) params.line = filters.line;
     if (filters.station) params.station = filters.station;
     if (filters.channel) params.channel = filters.channel;
     if (filters.step_name) params.step_name = filters.step_name;
-    if (filters.time_label) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.time_label)) {
-        params.start_date = filters.time_label;
-        params.end_date = filters.time_label;
-      } else {
-        // For Week (2024-W18) or Month (2024-05), we can pass them as start_date if backend supports it 
-        // or just pass as a custom param. For now, let's assume the user mostly clicks days in 7d view.
-        params.start_date = filters.time_label;
-      }
-    }
+
 
     const res = await getAnalyticsDashboard(params);
     const end = performance.now();
@@ -177,7 +213,7 @@ const Analytics = () => {
     const total = dataList.reduce((sum, d) => sum + d.value, 0);
     return {
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      grid: { left: '3%', right: '15%', bottom: '3%', top: '5%', containLabel: true },
+      grid: { left: '5%', right: '10%', bottom: '5%', top: '5%', containLabel: true },
       xAxis: {
         type: 'value',
         axisLabel: { color: 'rgba(255, 255, 255, 0.45)' },
@@ -186,7 +222,12 @@ const Analytics = () => {
       yAxis: {
         type: 'category',
         data: dataList.map(d => d.name),
-        axisLabel: { color: 'rgba(255, 255, 255, 0.85)', width: 120, overflow: 'truncate' },
+        axisLabel: { 
+          color: 'rgba(255, 255, 255, 0.85)', 
+          width: 250, 
+          overflow: 'breakAll',
+          fontSize: 11
+        },
         axisLine: { lineStyle: { color: '#334155' } }
       },
       series: [
@@ -230,12 +271,34 @@ const Analytics = () => {
       
       {/* Header Controls */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Radio.Group value={timeframe} onChange={e => setTimeframe(e.target.value)} buttonStyle="solid">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <Radio.Group 
+            value={customRange ? 'custom' : timeframe} 
+            onChange={e => {
+              if (e.target.value !== 'custom') {
+                setCustomRange(null);
+                setTimeframe(e.target.value);
+              }
+            }} 
+            buttonStyle="solid"
+          >
             <Radio.Button value="7d">7 Days</Radio.Button>
             <Radio.Button value="5w">5 Weeks</Radio.Button>
             <Radio.Button value="12m">12 Months</Radio.Button>
+            <Radio.Button value="custom" disabled={!customRange}>Custom</Radio.Button>
           </Radio.Group>
+
+          <RangePicker 
+            value={customRange}
+            onChange={(dates) => {
+              setCustomRange(dates);
+              if (dates) {
+                setFilters(prev => ({ ...prev, time_label: null })); // Xóa filter click khi chọn range mới
+              }
+            }}
+            placeholder={['Ngày bắt đầu', 'Ngày kết thúc']}
+            style={{ borderRadius: '6px', background: '#1e293b', borderColor: '#334155' }}
+          />
 
           {loadTime && (
             <Text type="secondary" style={{ fontSize: '13px' }}>
