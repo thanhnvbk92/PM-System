@@ -11,10 +11,9 @@ const Analytics = () => {
   
   // Cross-filtering states
   const [filters, setFilters] = useState({
-    line: null,
-    station: null,
     channel: null,
-    step_name: null
+    step_name: null,
+    time_label: null
   });
 
   const [dashboardData, setDashboardData] = useState({
@@ -40,6 +39,16 @@ const Analytics = () => {
     if (filters.station) params.station = filters.station;
     if (filters.channel) params.channel = filters.channel;
     if (filters.step_name) params.step_name = filters.step_name;
+    if (filters.time_label) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.time_label)) {
+        params.start_date = filters.time_label;
+        params.end_date = filters.time_label;
+      } else {
+        // For Week (2024-W18) or Month (2024-05), we can pass them as start_date if backend supports it 
+        // or just pass as a custom param. For now, let's assume the user mostly clicks days in 7d view.
+        params.start_date = filters.time_label;
+      }
+    }
 
     const res = await getAnalyticsDashboard(params);
     const end = performance.now();
@@ -89,9 +98,22 @@ const Analytics = () => {
         type: 'line',
         smooth: true,
         symbolSize: 6,
+        data: s.data ? s.data.map((val, idx) => ({
+          value: val,
+          rate: s.rates ? s.rates[idx] : 0
+        })) : [],
         itemStyle: { color: '#3b82f6' },
         label: {
-          show: false // Hidden on line chart to prevent clutter, users can hover to see tooltip
+          show: true,
+          position: 'top',
+          color: 'rgba(255, 255, 255, 0.85)',
+          fontSize: 10,
+          formatter: (params) => {
+            const val = params.value;
+            const rate = params.data.rate;
+            if (rate === 0 && val === 0) return '';
+            return `${rate}%\n(${val.toLocaleString()})`;
+          }
         },
         areaStyle: {
           color: {
@@ -242,7 +264,17 @@ const Analytics = () => {
           <Col span={24}>
             <Card title="Trend Over Time" bordered={false} className="dark-card" bodyStyle={{ height: 300, padding: 0 }}>
               {dashboardData.trend.series.length > 0 ? (
-                <ReactECharts option={getLineChartOptions(dashboardData.trend)} style={{ height: '100%' }} />
+                <ReactECharts 
+                  option={getLineChartOptions(dashboardData.trend)} 
+                  style={{ height: '350px' }} 
+                  onEvents={{
+                    click: (params) => {
+                      if (params.componentType === 'series') {
+                        handleFilterClick('time_label', params.name);
+                      }
+                    }
+                  }}
+                />
               ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}
             </Card>
           </Col>

@@ -259,7 +259,10 @@ async def get_analytics_dashboard(
             error_count_expr = "countIf(r.result = 2)"
 
         q_trend = f"""
-            SELECT {date_func} as time_label, {error_count_expr} as errors
+            SELECT {date_func} as time_label, 
+                   {error_count_expr} as errors,
+                   count() as total,
+                   if(total > 0, round(errors * 100 / total, 2), 0) as rate
             {base_from_joins}
             {step_join}
             WHERE {base_where}
@@ -330,10 +333,12 @@ async def get_analytics_dashboard(
 
         trend_time_labels = []
         trend_series_data = []
+        trend_rate_data = []
         for row in res_trend:
             t_label = row[0].strftime(format_str) if hasattr(row[0], 'strftime') else str(row[0])
             trend_time_labels.append(t_label)
             trend_series_data.append(row[1])
+            trend_rate_data.append(row[3]) # Index 3 is rate
             
         top_errors_data = [{"name": r[0], "value": r[1]} for r in res_errors]
         top_errors_data.reverse()
@@ -341,7 +346,7 @@ async def get_analytics_dashboard(
         return {
             "trend": {
                 "time_labels": trend_time_labels,
-                "series": [{"name": "NG Count", "type": "line", "smooth": True, "data": trend_series_data}]
+                "series": [{"name": "NG Count", "type": "line", "smooth": True, "data": trend_series_data, "rates": trend_rate_data}]
             },
             "by_line": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_line],
             "by_station": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_station],

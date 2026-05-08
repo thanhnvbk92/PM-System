@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Card, Modal, Form, Input, InputNumber, notification, Tag, Typography, Select, Tabs, Segmented } from 'antd';
-import { EditOutlined, DeleteOutlined, PlusOutlined, DatabaseOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PlusOutlined, DatabaseOutlined, DownloadOutlined, UploadOutlined, SyncOutlined, SearchOutlined } from '@ant-design/icons';
 import { getMasterData, saveMasterData, deleteMasterData, importMasterData, getActiveChannelIds } from '../services/api';
 import { message } from 'antd';
 
@@ -28,6 +28,9 @@ const MasterData = ({ isServerConnected }) => {
   const [lookups, setLookups] = useState({});
   const [activeChannelIds, setActiveChannelIds] = useState([]);
   const [form] = Form.useForm();
+  
+  const [searchText, setSearchText] = useState('');
+  const [parentFilter, setParentFilter] = useState(null);
   
   // State cho việc lọc Station theo Line trong form Channel
   const [selectedLine, setSelectedLine] = useState(null);
@@ -79,10 +82,11 @@ const MasterData = ({ isServerConnected }) => {
   };
 
   useEffect(() => {
+    setSearchText('');
+    setParentFilter(null);
     fetchData();
-    fetchLookups(); // Tải lookups ngay để hiển thị tên thay vì ID trong bảng
+    fetchLookups(); 
     
-    // Nếu là channels, thiết lập interval để refresh trạng thái online
     let interval;
     if (activeEntity === 'channels' && isServerConnected) {
       interval = setInterval(async () => {
@@ -90,7 +94,7 @@ const MasterData = ({ isServerConnected }) => {
         if (activeRes.success) {
           setActiveChannelIds(activeRes.data);
         }
-      }, 30000); // 30s refresh một lần
+      }, 30000);
     }
     
     return () => {
@@ -235,19 +239,67 @@ const MasterData = ({ isServerConnected }) => {
     reader.readAsText(file);
   };
 
+  const getColumnSearchProps = (dataIndex, title) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          placeholder={`Tìm ${title}...`}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => confirm()}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => confirm()}
+            icon={<SearchOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            Lọc
+          </Button>
+          <Button
+            onClick={() => {
+              if (clearFilters) clearFilters();
+              confirm();
+            }}
+            size="small"
+            style={{ width: 90 }}
+          >
+            Reset
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+    ),
+    onFilter: (value, record) =>
+      record[dataIndex]
+        ? record[dataIndex].toString().toLowerCase().includes(value.toLowerCase())
+        : false,
+  });
+
   const columns = data.length > 0 ? Object.keys(data[0]).map(key => {
     let width = 120;
-    if (key === 'id') width = 60;
+    const title = key.toUpperCase();
+    if (key === 'id') width = 70;
     else if (key === 'name') width = 180;
     else if (key === 'remark') width = 200;
     else if (key.endsWith('_id')) width = 140;
 
-    return {
-      title: key.toUpperCase(),
+    const columnDef = {
+      title: title,
       dataIndex: key,
       key: key,
       width: width,
       ellipsis: true,
+      sorter: (a, b) => {
+        const valA = a[key] || '';
+        const valB = b[key] || '';
+        return typeof valA === 'number' ? valA - valB : String(valA).localeCompare(String(valB));
+      },
       render: (text) => {
         if (key === 'id') return <Text strong style={{ color: '#1890ff' }}>{text}</Text>;
         
@@ -265,6 +317,20 @@ const MasterData = ({ isServerConnected }) => {
         return <span title={text}>{text}</span>;
       }
     };
+
+    // Thêm bộ lọc cho từng cột
+    const entityLookup = lookupMap[key];
+    if (entityLookup && lookups[entityLookup]) {
+      // Bộ lọc dạng checkbox cho các trường lookup (Line, Station, v.v.)
+      columnDef.filters = lookups[entityLookup].map(l => ({ text: l.name, value: l.id }));
+      columnDef.filterSearch = true;
+      columnDef.onFilter = (value, record) => record[key] === value;
+    } else if (key !== 'id') {
+      // Bộ lọc dạng tìm kiếm cho các trường text/số
+      Object.assign(columnDef, getColumnSearchProps(key, title));
+    }
+
+    return columnDef;
   }) : [];
 
   // Thêm cột STATUS cho riêng bảng channels
@@ -305,6 +371,79 @@ const MasterData = ({ isServerConnected }) => {
           <Text type="secondary" style={{ fontSize: '15px' }}>Quản lý cấu hình hệ thống và dữ liệu danh mục</Text>
         </div>
         <Space size={8}>
+          {/* General Search */}
+          <Input 
+            placeholder={`Tìm kiếm trong ${entities.find(e => e.id === activeEntity)?.name}...`}
+            allowClear
+            prefix={<PlusOutlined rotate={45} style={{ color: 'rgba(255,255,255,0.45)' }} />} // Using PlusOutlined rotate for search icon as placeholder if SearchOutlined not available
+            onChange={e => setSearchText(e.target.value)}
+            value={searchText}
+            style={{ width: 220, borderRadius: 8, height: 38, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+          />
+
+          {/* Parent-Entity Filter Dropdowns */}
+          {(activeEntity === 'stations' || activeEntity === 'model_group') && (
+            <Select
+              placeholder="Lọc theo Line"
+              allowClear
+              style={{ width: 150 }}
+              onChange={setParentFilter}
+              value={parentFilter}
+            >
+              {lookups.lines?.map(l => <Option key={l.id} value={l.id}>{l.name}</Option>)}
+            </Select>
+          )}
+
+          {activeEntity === 'channels' && (
+            <Select
+              placeholder="Lọc theo Station"
+              allowClear
+              showSearch
+              style={{ width: 180 }}
+              onChange={setParentFilter}
+              value={parentFilter}
+              filterOption={(input, option) => (option?.children ?? '').toLowerCase().includes(input.toLowerCase())}
+            >
+              {lookups.stations?.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
+            </Select>
+          )}
+
+          {activeEntity === 'models' && (
+            <Select
+              placeholder="Lọc Model Group"
+              allowClear
+              style={{ width: 160 }}
+              onChange={setParentFilter}
+              value={parentFilter}
+            >
+              {lookups.model_group?.map(mg => <Option key={mg.id} value={mg.id}>{mg.name}</Option>)}
+            </Select>
+          )}
+
+          {activeEntity === 'devices' && (
+            <Select
+              placeholder="Lọc theo Station"
+              allowClear
+              showSearch
+              style={{ width: 180 }}
+              onChange={setParentFilter}
+              value={parentFilter}
+              filterOption={(input, option) => (option?.children ?? '').toLowerCase().includes(input.toLowerCase())}
+            >
+              {lookups.stations?.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
+            </Select>
+          )}
+
+          <Button 
+            icon={<SyncOutlined spin={loading} />} 
+            onClick={() => {
+              fetchData();
+              fetchLookups(true);
+            }}
+            style={{ borderRadius: 8, height: 38 }}
+            title="Làm mới dữ liệu"
+          />
+
           <Button 
             icon={<DownloadOutlined />} 
             onClick={handleExportCSV}
@@ -368,7 +507,43 @@ const MasterData = ({ isServerConnected }) => {
 
         <Table 
           columns={columns} 
-          dataSource={data.map((item, index) => ({ ...item, key: item.id || index }))} 
+          dataSource={data
+            .filter(item => {
+              // General Text Search
+              if (searchText) {
+                const searchLower = searchText.toLowerCase();
+                const match = Object.entries(item).some(([key, val]) => {
+                  if (key === 'key') return false;
+                  // Nếu là trường lookup, tìm kiếm theo tên trong lookup
+                  const lookupEntity = lookupMap[key];
+                  if (lookupEntity && lookups[lookupEntity]) {
+                    const found = lookups[lookupEntity].find(l => l.id === val);
+                    if (found && found.name.toLowerCase().includes(searchLower)) return true;
+                  }
+                  return String(val).toLowerCase().includes(searchLower);
+                });
+                if (!match) return false;
+              }
+
+              // Parent-Entity Filtering
+              if (parentFilter) {
+                if (activeEntity === 'stations' || activeEntity === 'model_group') {
+                  if (item.line_id !== parentFilter) return false;
+                } else if (activeEntity === 'channels') {
+                  if (item.station_id !== parentFilter) return false;
+                } else if (activeEntity === 'models') {
+                  if (item.model_group_id !== parentFilter) return false;
+                } else if (activeEntity === 'devices') {
+                  // Lọc Device theo Station (thông qua Channel)
+                  const channel = (lookups.channels || []).find(c => c.id === item.channel_id);
+                  if (!channel || channel.station_id !== parentFilter) return false;
+                }
+              }
+              
+              return true;
+            })
+            .map((item, index) => ({ ...item, key: item.id || index }))
+          } 
           loading={loading}
           size="small"
           pagination={{ 
