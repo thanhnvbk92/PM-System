@@ -101,9 +101,27 @@ export const getProductionTrends = async () => {
   }
 };
 
+export const getAnalyticsDashboard = async (params) => {
+  try {
+    const response = await apiClient.get('/api/stats/dashboard', { params });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 export const getChannelsStatus = async () => {
   try {
     const response = await apiClient.get('/api/stats/channel-status');
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const getActiveChannelIds = async () => {
+  try {
+    const response = await apiClient.get('/api/stats/active-channel-ids');
     return { success: true, data: response.data };
   } catch (error) {
     return { success: false, error: error.message };

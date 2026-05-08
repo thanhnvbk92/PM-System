@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Space, Button, Select, Skeleton, Empty, Switch, Tag, Tabs, Segmented } from 'antd';
+import { Row, Col, Card, Statistic, Space, Button, Select, Skeleton, Empty, Switch, Tag, Tabs, Segmented, Typography } from 'antd';
 import { 
   ArrowUpOutlined, 
   ArrowDownOutlined, 
@@ -26,20 +26,22 @@ const Dashboard = () => {
   const [resultData, setResultData] = useState([]);
   const [trends, setTrends] = useState({ months: [], weeks: [], days: [] });
   const [channelStatus, setChannelStatus] = useState({ total: 0, online: 0, offline: 0 });
-  const [trendType, setTrendType] = useState('days');
+  const [trendType, setTrendType] = useState('months');
+  const [loadTime, setLoadTime] = useState(null);
 
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
-    const [sumRes, buyerRes, resultRes, trendRes, channelRes] = await Promise.all([
+    const start = performance.now();
+    const [sumRes, resultRes, trendRes, channelRes] = await Promise.all([
       getStatsSummary(filters),
-      getStatsByBuyer(filters),
       getStatsByResult(filters),
       getProductionTrends(),
       getChannelsStatus()
     ]);
+    const end = performance.now();
+    setLoadTime((end - start).toFixed(0));
 
     if (sumRes.success) setSummary(sumRes.data);
-    if (buyerRes.success) setBuyerData(buyerRes.data);
     if (resultRes.success) setResultData(resultRes.data);
     if (trendRes.success) setTrends(trendRes.data);
     if (channelRes.success) setChannelStatus(channelRes.data);
@@ -92,83 +94,182 @@ const Dashboard = () => {
     };
   }, []);
 
-  // ECharts Options
-  const buyerChartOption = {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'value', boundaryGap: [0, 0.01] },
-    yAxis: { type: 'category', data: buyerData.map(d => d.name) },
-    series: [
-      {
-        name: 'Logs',
-        type: 'bar',
-        data: buyerData.map(d => d.value),
-        itemStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
-            colorStops: [{ offset: 0, color: '#6366f1' }, { offset: 1, color: '#a855f7' }]
-          }
-        }
-      }
-    ]
-  };
-
+  // ECharts Options - Premium UI Design
   const resultChartOption = {
-    tooltip: { trigger: 'item' },
-    legend: { bottom: '5%', left: 'center' },
+    tooltip: { 
+      trigger: 'item',
+      backgroundColor: 'rgba(15, 23, 42, 0.9)',
+      borderColor: '#334155',
+      textStyle: { color: '#f8fafc' },
+      padding: 12
+    },
+    legend: { 
+      bottom: '0%', 
+      left: 'center', 
+      textStyle: { color: '#cbd5e1', fontSize: 14, fontWeight: '500' },
+      icon: 'circle',
+      itemGap: 20
+    },
     series: [
       {
-        name: 'Result',
+        name: 'Result Overview',
         type: 'pie',
-        radius: ['40%', '70%'],
-        avoidLabelOverlap: false,
-        itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
-        label: { show: false, position: 'center' },
-        emphasis: { label: { show: true, fontSize: '20', fontWeight: 'bold' } },
-        labelLine: { show: false },
+        radius: ['45%', '65%'], // Reduced to prevent label cutoff
+        center: ['50%', '45%'],
+        avoidLabelOverlap: true,
+        itemStyle: { 
+          borderRadius: 8, 
+          borderColor: '#0f172a', 
+          borderWidth: 4,
+          shadowBlur: 15,
+          shadowColor: 'rgba(0, 0, 0, 0.3)',
+          shadowOffsetY: 5
+        },
+        label: { 
+          show: true, 
+          formatter: '{b|{b}}\n{v|{c}}  {p|{d}%}',
+          rich: {
+            b: { fontSize: 13, color: '#94a3b8', padding: [0, 0, 4, 0] },
+            v: { fontSize: 16, fontWeight: 'bold', color: '#f8fafc' },
+            p: { fontSize: 13, fontWeight: 'bold', color: '#cbd5e1' }
+          }
+        },
+        labelLine: { 
+          show: true, 
+          length: 10, 
+          length2: 15, 
+          smooth: true,
+          lineStyle: { width: 2, type: 'dashed' }
+        },
         data: resultData.map(d => ({
           name: d.name,
           value: d.value,
-          itemStyle: { color: d.name === 'OK' ? '#22c55e' : '#ef4444' }
+          itemStyle: { 
+            color: d.name === 'OK' ? 
+              { type: 'linear', x: 0, y: 0, x2: 1, y2: 1, colorStops: [{ offset: 0, color: '#34d399' }, { offset: 1, color: '#059669' }] } : 
+              { type: 'linear', x: 0, y: 0, x2: 1, y2: 1, colorStops: [{ offset: 0, color: '#fb7185' }, { offset: 1, color: '#e11d48' }] } 
+          }
         }))
       }
     ]
   };
 
   const trendChartOption = {
-    tooltip: { trigger: 'axis' },
+    tooltip: { 
+      trigger: 'axis',
+      axisPointer: { type: 'cross', crossStyle: { color: '#64748b' } },
+      backgroundColor: 'rgba(15, 23, 42, 0.9)',
+      borderColor: '#334155',
+      textStyle: { color: '#f8fafc' },
+      padding: 16
+    },
+    legend: { 
+      data: ['Pass Ratio', 'Total Production'], 
+      bottom: 0, 
+      textStyle: { color: '#cbd5e1', fontSize: 14, fontWeight: '500' },
+      icon: 'roundRect',
+      itemGap: 30
+    },
+    grid: { left: '3%', right: '3%', bottom: '15%', top: '18%', containLabel: true },
     xAxis: { 
       type: 'category', 
-      data: trends[trendType].map(d => d.date)
+      data: trends[trendType]?.map(d => d.date) || [],
+      axisLine: { lineStyle: { color: '#334155', width: 2 } },
+      axisLabel: { color: '#94a3b8', fontSize: 12, margin: 12 },
+      axisTick: { show: false },
+      boundaryGap: true
     },
-    yAxis: { type: 'value' },
-    series: [{
-      data: trends[trendType].map(d => d.value),
-      type: 'line',
-      smooth: true,
-      areaStyle: {
-        color: {
-          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [{ offset: 0, color: '#6366f1' }, { offset: 1, color: 'rgba(99, 102, 241, 0)' }]
+    yAxis: [
+      { 
+        type: 'value',
+        name: 'Pass Ratio',
+        min: 'dataMin',
+        max: 100,
+        splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } },
+        axisLabel: { formatter: '{value} %', color: '#94a3b8', fontWeight: '500' },
+        nameTextStyle: { color: '#94a3b8', padding: [0, 0, 0, 10] },
+        axisLine: { show: false }
+      },
+      { 
+        type: 'value',
+        name: 'Total Volume',
+        splitLine: { show: false },
+        axisLabel: { color: '#94a3b8', fontWeight: '500' },
+        nameTextStyle: { color: '#94a3b8', padding: [0, 10, 0, 0] },
+        axisLine: { show: false }
+      }
+    ],
+    series: [
+      {
+        name: 'Pass Ratio',
+        data: trends[trendType]?.map(d => d.ratio) || [],
+        type: 'line',
+        yAxisIndex: 0,
+        smooth: 0.4,
+        symbol: 'circle',
+        symbolSize: 10,
+        showSymbol: true,
+        label: { 
+          show: true, 
+          position: 'top', 
+          formatter: '{c}%', 
+          color: '#10b981', 
+          fontWeight: '800',
+          fontSize: 13,
+          backgroundColor: 'rgba(15, 23, 42, 0.7)',
+          padding: [4, 6],
+          borderRadius: 4
+        },
+        itemStyle: { color: '#10b981', borderColor: '#fff', borderWidth: 2 },
+        lineStyle: { width: 4, color: '#10b981', shadowColor: 'rgba(16, 185, 129, 0.4)', shadowBlur: 10, shadowOffsetY: 5 },
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: 'rgba(16, 185, 129, 0.3)' }, { offset: 1, color: 'rgba(16, 185, 129, 0)' }]
+          }
         }
       },
-      itemStyle: { color: '#6366f1' },
-      lineStyle: { width: 3 }
-    }]
-  };
-
-  // Handle Chart Clicks for Filtering
-  const onBuyerChartClick = (params) => {
-    // In a real app, you'd map name to ID. For now, we'll just log and mock
-    console.log('Clicked buyer:', params.name);
-    // setFilter('buyer_id', ...); 
+      {
+        name: 'Total Production',
+        data: trends[trendType]?.map(d => d.total) || [],
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: 0.4,
+        symbol: 'emptyCircle',
+        symbolSize: 8,
+        label: { 
+          show: true, 
+          position: 'bottom', 
+          color: '#8b5cf6', 
+          fontWeight: 'bold',
+          fontSize: 12,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          padding: [2, 6],
+          borderRadius: 4
+        },
+        itemStyle: { color: '#8b5cf6' },
+        lineStyle: { width: 3, type: 'dashed', color: '#8b5cf6', shadowColor: 'rgba(139, 92, 246, 0.3)', shadowBlur: 8, shadowOffsetY: 3 }
+      }
+    ]
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Production Dashboard</h1>
-        <Space>
+    <div style={{ padding: '12px 24px 24px' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <Typography.Title style={{ margin: 0, color: '#f8fafc', fontWeight: 700, fontSize: '28px' }}>
+            System Dashboard
+          </Typography.Title>
+          <Typography.Text type="secondary" style={{ fontSize: '15px' }}>
+            Tổng quan tình hình sản xuất và hiệu suất hệ thống
+          </Typography.Text>
+        </div>
+        <Space align="center">
+          {loadTime && (
+            <Typography.Text type="secondary" style={{ fontSize: '13px', marginRight: '8px' }}>
+              Query time: {loadTime}ms
+            </Typography.Text>
+          )}
           <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>Refresh</Button>
         </Space>
       </div>
@@ -220,42 +321,17 @@ const Dashboard = () => {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col span={24}>
-          <Card 
-            title="Production Trend" 
-            extra={
-              <Segmented 
-                options={[
-                  { label: '7 Days', value: 'days' },
-                  { label: '5 Weeks', value: 'weeks' },
-                  { label: '12 Months', value: 'months' }
-                ]} 
-                value={trendType}
-                onChange={setTrendType}
-              />
-            }
-          >
-            {loading ? <Skeleton active /> : <ReactECharts option={trendChartOption} style={{ height: 350 }} />}
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={16}>
-          <Card title="Distribution by Buyer" bordered={false}>
+          <Card title="Monthly Production Trend" bordered={false}>
             {loading ? <Skeleton active /> : (
-              <ReactECharts 
-                option={buyerChartOption} 
-                onEvents={{ 'click': onBuyerChartClick }}
-                style={{ height: '400px' }}
-              />
+              <ReactECharts option={trendChartOption} style={{ height: '350px' }} />
             )}
           </Card>
         </Col>
         <Col xs={24} lg={8}>
           <Card title="Result Ratio" bordered={false}>
             {loading ? <Skeleton active /> : (
-              <ReactECharts option={resultChartOption} style={{ height: '400px' }} />
+              <ReactECharts option={resultChartOption} style={{ height: '350px' }} />
             )}
           </Card>
         </Col>

@@ -15,6 +15,11 @@ const LogViewer = ({ isServerConnected }) => {
     station_id: null,
     result: null
   });
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 20,
+    total: 0
+  });
   
   const [masterData, setMasterData] = useState({
     lines: [],
@@ -40,84 +45,32 @@ const LogViewer = ({ isServerConnected }) => {
     if (channelsRes.success) setMasterData(prev => ({ ...prev, channels: channelsRes.data }));
   };
 
-  const fetchLogs = async () => {
+  const fetchLogs = async (page = 1, pageSize = pagination.pageSize) => {
     if (!isServerConnected) return;
     setLoading(true);
-    setLogs([]); // Clear old logs immediately when searching
-    const result = await searchLogs({ 
-        limit: 500,
-        pid: filters.pid,
-        line_id: filters.line_id,
-        station_id: filters.station_id,
-        result: filters.result
-    });
+    
+    const params = {
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+    };
+    if (filters.pid) params.pid = filters.pid;
+    if (filters.line_id) params.line_id = filters.line_id;
+    if (filters.station_id) params.station_id = filters.station_id;
+    if (filters.result) params.result = filters.result;
+
+    const result = await searchLogs(params);
     if (result.success) {
-      setLogs(result.data || []);
+      setLogs(result.data.data || []);
+      setPagination(prev => ({ ...prev, current: page, pageSize, total: result.data.total || 0 }));
     } else {
       notification.error({ message: 'Error Fetching Data', description: result.error });
     }
     setLoading(false);
   };
 
-  // WebSocket for Real-time updates
-  useEffect(() => {
-    let socket;
-    if (isServerConnected) {
-      // Determine WebSocket URL based on API_BASE_URL or current location
-      const apiBase = import.meta.env.VITE_API_URL || '';
-      let url;
-      if (apiBase.startsWith('http')) {
-        const wsProtocol = apiBase.startsWith('https') ? 'wss:' : 'ws:';
-        url = apiBase.replace(/^http(s?):/, wsProtocol) + '/ws/logs';
-      } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname;
-        const port = window.location.port ? '8000' : '8000'; // Default to 8000 for backend
-        url = `${protocol}//${host}:${port}/ws/logs`;
-      }
-      
-      socket = new WebSocket(url);
-
-      socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === 'NEW_RESULT') {
-          const newRow = { ...message.data };
-          const currentFilters = filtersRef.current;
-          
-          console.log("WebSocket New Result:", newRow.pid, "Current Filter:", currentFilters.pid);
-
-          // Check if new data matches current filters
-          if (currentFilters.pid && currentFilters.pid.trim() !== '' && newRow.pid !== currentFilters.pid) {
-            console.log("Filtered out WebSocket result:", newRow.pid);
-            return;
-          }
-          if (currentFilters.line_id && newRow.line_id !== currentFilters.line_id) return;
-          if (currentFilters.station_id && newRow.station_id !== currentFilters.station_id) return;
-          if (currentFilters.result && newRow.result !== currentFilters.result) return;
-          
-          // Map IDs to Names and IP using masterData for instant display
-          const line = masterData.lines.find(l => l.id === newRow.line_id);
-          const station = masterData.stations.find(s => s.id === newRow.station_id);
-          const channel = masterData.channels.find(c => c.id === newRow.channel_id);
-          
-          newRow.line_name = line ? line.name : (newRow.line_name || "N/A");
-          newRow.station_name = station ? station.name : (newRow.station_name || "N/A");
-          newRow.channel_name = channel ? channel.name : (newRow.channel_name || `CH ${newRow.channel_id}`);
-          newRow.ip = channel ? channel.ip_address : (newRow.ip || '-');
-          newRow.timestamp = newRow.start_time; // For table display
-
-          setLogs(prevLogs => [newRow, ...prevLogs.slice(0, 99)]);
-        }
-      };
-
-      socket.onopen = () => console.log('WebSocket Connected');
-      socket.onclose = () => console.log('WebSocket Disconnected');
-    }
-
-    return () => {
-      if (socket) socket.close();
-    };
-  }, [isServerConnected]);
+  const handleTableChange = (newPagination) => {
+    fetchLogs(newPagination.current, newPagination.pageSize);
+  };
 
   const handleViewDetail = async (record) => {
     setDetailLoading(true);
@@ -134,8 +87,7 @@ const LogViewer = ({ isServerConnected }) => {
 
   useEffect(() => {
     if (isServerConnected) {
-        fetchMasterData();
-        fetchLogs();
+        fetchMasterData().then(() => fetchLogs(1));
     }
   }, [isServerConnected]);
 
@@ -144,14 +96,15 @@ const LogViewer = ({ isServerConnected }) => {
       title: 'Start Time',
       dataIndex: 'timestamp',
       key: 'timestamp',
-      width: 170,
-      render: (text) => <Text type="secondary">{new Date(text).toLocaleString()}</Text>,
+      width: 180,
+      render: (text) => <Text style={{ color: '#94a3b8' }}>{new Date(text).toLocaleString()}</Text>,
     },
     {
       title: 'PID',
       dataIndex: 'pid',
       key: 'pid',
-      render: (text) => <Text strong>{text}</Text>,
+      width: 250,
+      render: (text) => <Text strong style={{ color: '#e2e8f0', letterSpacing: '0.5px' }}>{text}</Text>,
     },
     {
       title: 'Line',
@@ -167,7 +120,7 @@ const LogViewer = ({ isServerConnected }) => {
       title: 'IP',
       dataIndex: 'ip',
       key: 'ip',
-      render: (text) => <Text type="secondary">{text || '-'}</Text>
+      render: (text) => <Text style={{ color: '#64748b' }}>{text || '-'}</Text>
     },
     {
       title: 'Channel',
@@ -178,21 +131,41 @@ const LogViewer = ({ isServerConnected }) => {
       title: 'Result',
       dataIndex: 'result',
       key: 'result',
-      width: 80,
+      width: 100,
       render: (result) => (
-        <Tag color={result === 'OK' ? 'green' : 'red'}>{result}</Tag>
+        <Tag 
+          style={{ 
+            px: 2, 
+            borderRadius: '4px', 
+            fontWeight: 'bold',
+            color: result === 'OK' ? '#10b981' : '#f43f5e',
+            background: result === 'OK' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+            borderColor: result === 'OK' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)'
+          }}
+        >
+          {result}
+        </Tag>
       ),
     },
     {
         title: 'Step NG',
         dataIndex: 'step_ng',
         key: 'step_ng',
-        render: (text) => text ? <Tag color="volcano">{text}</Tag> : '-'
+        render: (text) => text ? (
+          <Tag style={{ 
+            borderRadius: '4px', 
+            color: '#f59e0b', 
+            background: 'rgba(245, 158, 11, 0.1)', 
+            borderColor: 'rgba(245, 158, 11, 0.2)' 
+          }}>
+            {text}
+          </Tag>
+        ) : <Text style={{ color: '#64748b' }}>-</Text>
     },
     {
       title: 'Action',
       key: 'action',
-      width: 80,
+      width: 100,
       render: (_, record) => (
         <Button 
           type="primary" 
@@ -200,6 +173,7 @@ const LogViewer = ({ isServerConnected }) => {
           icon={<EyeOutlined />} 
           onClick={() => handleViewDetail(record)}
           size="small"
+          style={{ borderColor: '#3b82f6', color: '#3b82f6', borderRadius: '6px' }}
         >
           View
         </Button>
@@ -208,100 +182,164 @@ const LogViewer = ({ isServerConnected }) => {
   ];
 
   return (
-    <Card 
-      title={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>📊 Production Data Explorer</span>
-          <Space>
-            <Input 
-              prefix={<SearchOutlined />} 
-              placeholder="Filter PID..." 
-              style={{ width: 200 }}
-              value={filters.pid}
-              onChange={e => setFilters({...filters, pid: e.target.value})}
-              onPressEnter={fetchLogs}
-            />
-            <Select 
-                placeholder="Line" 
-                style={{ width: 150 }} 
-                allowClear
-                onChange={val => setFilters({...filters, line_id: val})}
-            >
-                {masterData.lines.map(l => <Option key={l.id} value={l.id}>{l.name}</Option>)}
-            </Select>
-            <Select 
-                placeholder="Result" 
-                style={{ width: 100 }} 
-                allowClear
-                onChange={val => setFilters({...filters, result: val})}
-            >
-                <Option value="OK">OK</Option>
-                <Option value="NG">NG</Option>
-            </Select>
-            <Button type="primary" icon={<ReloadOutlined />} onClick={fetchLogs}>Filter</Button>
-            <Tag color="green" style={{ marginLeft: 8 }}>Always Live</Tag>
-          </Space>
+    <div style={{ padding: '12px 24px 24px' }}>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <Title style={{ margin: 0, color: '#f8fafc', fontWeight: 700, fontSize: '28px' }}>
+             Production Data Explorer
+          </Title>
+          <Text type="secondary" style={{ fontSize: '15px' }}>
+             Tra cứu chi tiết và trạng thái Log của hệ thống
+          </Text>
         </div>
-      }
-      bordered={false}
-    >
-      <Table 
-        columns={columns} 
-        dataSource={logs} 
-        loading={loading}
-        pagination={{ pageSize: 15 }}
-        rowKey="id"
-        size="middle"
-      />
+        <Space wrap align="center">
+          {pagination.total > 0 && (
+            <Tag color="#3b82f6" style={{ fontSize: '14px', padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', margin: 0 }}>
+              Total: {pagination.total.toLocaleString()}
+            </Tag>
+          )}
+          <Input 
+            prefix={<SearchOutlined style={{ color: '#64748b' }} />} 
+            placeholder="Search PID..." 
+            style={{ width: 200, borderRadius: '6px', background: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}
+            value={filters.pid}
+            onChange={e => setFilters({...filters, pid: e.target.value})}
+            onPressEnter={() => fetchLogs(1)}
+          />
+          <Select 
+            placeholder="Select Line" 
+            style={{ width: 140 }} 
+            allowClear
+            onChange={val => setFilters({...filters, line_id: val})}
+          >
+            {masterData.lines.map(l => <Option key={l.id} value={l.id}>{l.name}</Option>)}
+          </Select>
+          <Select 
+            placeholder="Result" 
+            style={{ width: 100 }} 
+            allowClear
+            onChange={val => setFilters({...filters, result: val})}
+          >
+            <Option value="OK">OK</Option>
+            <Option value="NG">NG</Option>
+          </Select>
+          <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchLogs(1)} style={{ borderRadius: '6px', background: '#3b82f6' }}>
+            Search
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => setFilters({ pid: '', line_id: null, station_id: null, result: null })} style={{ borderRadius: '6px', background: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}>
+            Reset
+          </Button>
+        </Space>
+      </div>
 
-      <Modal
-        title={`Details for PID: ${selectedLog?.info?.pid || ''}`}
-        open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
-        footer={null}
-        width={1000}
+      <Card 
+        style={{ 
+          background: '#0f172a', 
+          borderColor: '#1e293b', 
+          borderRadius: '12px',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' 
+        }}
+        bodyStyle={{ padding: '0' }}
+        bordered={false}
       >
-        {detailLoading ? (
-          <div style={{ padding: '50px', textAlign: 'center' }}>Loading details...</div>
-        ) : selectedLog && (
-          <div>
-            <Descriptions title="General Info" bordered size="small" column={2}>
-              <Descriptions.Item label="PID">{selectedLog.info.pid}</Descriptions.Item>
-              <Descriptions.Item label="Result">
-                <Tag color={selectedLog.info.result === 'OK' ? 'green' : 'red'}>{selectedLog.info.result}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Line">{selectedLog.info.line_name}</Descriptions.Item>
-              <Descriptions.Item label="Station">{selectedLog.info.station_name}</Descriptions.Item>
-              <Descriptions.Item label="Channel">{selectedLog.info.channel_name}</Descriptions.Item>
-              <Descriptions.Item label="Start Time">{new Date(selectedLog.info.start_time).toLocaleString()}</Descriptions.Item>
-              <Descriptions.Item label="Job File" span={2}>{selectedLog.info.jobfile}</Descriptions.Item>
-            </Descriptions>
+        <div style={{ padding: '16px 24px' }}>
+          <Table 
+            columns={columns} 
+            dataSource={logs} 
+            loading={loading}
+            pagination={{
+              ...pagination,
+              showSizeChanger: true,
+              showTotal: (total, range) => `Showing ${range[0]}-${range[1]} of ${total} logs`,
+            }}
+            onChange={handleTableChange}
+            rowKey="id"
+            size="middle"
+            scroll={{ y: 'calc(100vh - 300px)', x: 'max-content' }}
+            rowClassName={() => 'dark-table-row'}
+          />
+        </div>
 
-            <Divider orientation="left">Test Steps</Divider>
-            
-            <Table
-              size="small"
-              dataSource={selectedLog.steps}
-              rowKey={(r, i) => i}
-              pagination={false}
-              columns={[
-                { title: '#', dataIndex: 'step_number', key: 'num' },
-                { title: 'Step Name', dataIndex: 'step_name', key: 'name' },
-                { title: 'Value', dataIndex: 'value', key: 'val' },
-                { title: 'Min', dataIndex: 'spec_min', key: 'min' },
-                { title: 'Max', dataIndex: 'spec_max', key: 'max' },
-                { 
-                  title: 'Result', 
-                  dataIndex: 'result', 
-                  key: 'res',
-                  render: (res) => <Tag color={res === 'OK' ? 'green' : 'red'}>{res}</Tag>
-                },
-              ]}
-            />
-          </div>
-        )}
-      </Modal>
-    </Card>
+        <Modal
+          title={<span style={{ color: '#f8fafc', fontSize: '18px' }}>Log Details: <Text strong style={{ color: '#3b82f6' }}>{selectedLog?.info?.pid}</Text></span>}
+          open={detailVisible}
+          onCancel={() => setDetailVisible(false)}
+          footer={null}
+          width={1000}
+          bodyStyle={{ background: '#0f172a', padding: '24px' }}
+          className="dark-modal"
+        >
+          {detailLoading ? (
+            <div style={{ padding: '50px', textAlign: 'center', color: '#94a3b8' }}>Loading detailed test steps...</div>
+          ) : selectedLog && (
+            <div style={{ color: '#cbd5e1' }}>
+              <Descriptions 
+                title={<span style={{ color: '#e2e8f0' }}>General Information</span>} 
+                bordered 
+                size="small" 
+                column={2}
+                labelStyle={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold', borderColor: '#334155' }}
+                contentStyle={{ background: '#0f172a', color: '#f8fafc', borderColor: '#334155' }}
+              >
+                <Descriptions.Item label="PID"><Text strong style={{ color: '#f8fafc' }}>{selectedLog.info.pid}</Text></Descriptions.Item>
+                <Descriptions.Item label="Result">
+                  <Tag 
+                    style={{ 
+                      fontWeight: 'bold', 
+                      borderRadius: '4px',
+                      color: selectedLog.info.result === 'OK' ? '#10b981' : '#f43f5e',
+                      background: selectedLog.info.result === 'OK' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                      borderColor: selectedLog.info.result === 'OK' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)'
+                    }}
+                  >
+                    {selectedLog.info.result}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="Line">{selectedLog.info.line_name}</Descriptions.Item>
+                <Descriptions.Item label="Station">{selectedLog.info.station_name}</Descriptions.Item>
+                <Descriptions.Item label="Channel">{selectedLog.info.channel_name}</Descriptions.Item>
+                <Descriptions.Item label="Start Time">{new Date(selectedLog.info.start_time).toLocaleString()}</Descriptions.Item>
+                <Descriptions.Item label="Job File" span={2}><Text code style={{ background: '#1e293b', color: '#cbd5e1' }}>{selectedLog.info.jobfile}</Text></Descriptions.Item>
+              </Descriptions>
+
+              <Divider style={{ borderColor: '#334155' }}><span style={{ color: '#94a3b8' }}>Test Steps</span></Divider>
+              
+              <Table
+                size="small"
+                dataSource={selectedLog.steps}
+                rowKey={(r, i) => i}
+                pagination={false}
+                columns={[
+                  { title: '#', dataIndex: 'step_number', key: 'num', width: 60 },
+                  { title: 'Step Name', dataIndex: 'step_name', key: 'name' },
+                  { title: 'Value', dataIndex: 'value', key: 'val', render: (val) => <Text style={{ color: '#38bdf8' }}>{val}</Text> },
+                  { title: 'Min', dataIndex: 'spec_min', key: 'min', render: (val) => <Text type="secondary">{val}</Text> },
+                  { title: 'Max', dataIndex: 'spec_max', key: 'max', render: (val) => <Text type="secondary">{val}</Text> },
+                  { 
+                    title: 'Result', 
+                    dataIndex: 'result', 
+                    key: 'res',
+                    width: 100,
+                    render: (res) => (
+                      <Tag 
+                        style={{ 
+                          borderRadius: '4px',
+                          color: res === 'OK' ? '#10b981' : '#f43f5e',
+                          background: res === 'OK' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                          borderColor: res === 'OK' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)'
+                        }}
+                      >
+                        {res}
+                      </Tag>
+                    )
+                  },
+                ]}
+              />
+            </div>
+          )}
+        </Modal>
+      </Card>
+    </div>
   );
 };
 

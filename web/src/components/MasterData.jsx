@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Card, Modal, Form, Input, InputNumber, notification, Tag, Typography, Select, Tabs, Segmented } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, DatabaseOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
-import { getMasterData, saveMasterData, deleteMasterData, importMasterData } from '../services/api';
+import { getMasterData, saveMasterData, deleteMasterData, importMasterData, getActiveChannelIds } from '../services/api';
 import { message } from 'antd';
 
 const { Title, Text } = Typography;
@@ -26,6 +26,7 @@ const MasterData = ({ isServerConnected }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [lookups, setLookups] = useState({});
+  const [activeChannelIds, setActiveChannelIds] = useState([]);
   const [form] = Form.useForm();
   
   // State cho việc lọc Station theo Line trong form Channel
@@ -48,6 +49,14 @@ const MasterData = ({ isServerConnected }) => {
     const result = await getMasterData(activeEntity);
     if (result.success) {
       setData(result.data);
+      
+      // Nếu là channels, lấy thêm thông tin online/offline
+      if (activeEntity === 'channels') {
+        const activeRes = await getActiveChannelIds();
+        if (activeRes.success) {
+          setActiveChannelIds(activeRes.data);
+        }
+      }
     } else {
       notification.error({ message: 'Error Fetching Data', description: result.error });
     }
@@ -72,6 +81,21 @@ const MasterData = ({ isServerConnected }) => {
   useEffect(() => {
     fetchData();
     fetchLookups(); // Tải lookups ngay để hiển thị tên thay vì ID trong bảng
+    
+    // Nếu là channels, thiết lập interval để refresh trạng thái online
+    let interval;
+    if (activeEntity === 'channels' && isServerConnected) {
+      interval = setInterval(async () => {
+        const activeRes = await getActiveChannelIds();
+        if (activeRes.success) {
+          setActiveChannelIds(activeRes.data);
+        }
+      }, 30000); // 30s refresh một lần
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [activeEntity, isServerConnected]);
 
   const handleAdd = async () => {
@@ -243,6 +267,23 @@ const MasterData = ({ isServerConnected }) => {
     };
   }) : [];
 
+  // Thêm cột STATUS cho riêng bảng channels
+  if (activeEntity === 'channels' && columns.length > 0) {
+    columns.splice(2, 0, {
+      title: 'STATUS',
+      key: 'status',
+      width: 100,
+      render: (_, record) => {
+        const isOnline = activeChannelIds.includes(record.id);
+        return (
+          <Tag color={isOnline ? 'success' : 'default'} style={{ borderRadius: 4 }}>
+            {isOnline ? 'ONLINE' : 'OFFLINE'}
+          </Tag>
+        );
+      }
+    });
+  }
+
   columns.push({
     title: 'ACTION',
     key: 'actions',
@@ -257,11 +298,11 @@ const MasterData = ({ isServerConnected }) => {
   });
 
   return (
-    <div className="master-data-container" style={{ padding: '0 16px 16px' }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="master-data-container" style={{ padding: '12px 24px 24px' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <Title level={3} style={{ margin: 0, color: '#fff' }}>Master Data Management</Title>
-          <Text type="secondary" style={{ fontSize: '12px' }}>Quản lý cấu hình hệ thống và dữ liệu danh mục</Text>
+          <Title style={{ margin: 0, color: '#f8fafc', fontWeight: 700, fontSize: '28px' }}>Master Data Management</Title>
+          <Text type="secondary" style={{ fontSize: '15px' }}>Quản lý cấu hình hệ thống và dữ liệu danh mục</Text>
         </div>
         <Space size={8}>
           <Button 
@@ -335,7 +376,7 @@ const MasterData = ({ isServerConnected }) => {
             showSizeChanger: true,
             showTotal: (total) => `Tổng cộng ${total} bản ghi`
           }}
-          scroll={{ y: 550 }}
+          scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
           className="custom-table"
           rowClassName={(record, index) => index % 2 === 0 ? 'even-row' : 'odd-row'}
         />

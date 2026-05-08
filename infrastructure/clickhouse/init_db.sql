@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS channels (
     status String
 ) ENGINE = ReplacingMergeTree() ORDER BY id;
 
+CREATE TABLE IF NOT EXISTS channel_heartbeats (
+    channel_id UInt32,
+    last_heartbeat DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree(last_heartbeat) ORDER BY channel_id;
+
 CREATE TABLE IF NOT EXISTS device_types (
     id UInt32,
     name String,

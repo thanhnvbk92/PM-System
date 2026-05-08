@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query, HTTPException, Request
 from typing import Optional, List
+from datetime import datetime
 from app.db.clickhouse import get_clickhouse_client
 
 router = APIRouter(prefix="/api/master")
@@ -76,6 +77,41 @@ async def add_channel(request: Request):
     return upsert_entity("channels", data)
 @router.delete("/channels/{item_id}")
 async def remove_channel(item_id: int): return delete_entity("channels", item_id)
+
+from pydantic import BaseModel
+
+class HeartbeatRequest(BaseModel):
+    mac_address: Optional[str] = None
+    channel_id: Optional[int] = None
+
+@router.post("/channels/heartbeat")
+async def channel_heartbeat(data: HeartbeatRequest):
+    mac_address = data.mac_address
+    channel_id = data.channel_id
+    
+    client = get_clickhouse_client()
+    if not client:
+        return {"success": False, "error": "Database not connected"}
+        
+    if not channel_id and mac_address:
+        # Resolve channel_id from mac_address
+        res = client.execute(f"SELECT id FROM channels FINAL WHERE mac_address = '{mac_address}' LIMIT 1")
+        if res:
+            channel_id = res[0][0]
+            
+    if channel_id:
+        # Ensure table exists (for development environments that haven't run the updated init script)
+        client.execute("""
+            CREATE TABLE IF NOT EXISTS channel_heartbeats (
+                channel_id UInt32,
+                last_heartbeat DateTime DEFAULT now()
+            ) ENGINE = ReplacingMergeTree(last_heartbeat) ORDER BY channel_id
+        """)
+        # Insert heartbeat
+        client.execute("INSERT INTO channel_heartbeats (channel_id, last_heartbeat) VALUES", [(channel_id, datetime.now())])
+        return {"success": True}
+        
+    return {"success": False, "error": "Channel not found"}
 
 @router.get("/channels/trace/{mac_address}")
 async def trace_channel_by_mac(mac_address: str):

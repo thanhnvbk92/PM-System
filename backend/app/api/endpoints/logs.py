@@ -14,7 +14,7 @@ async def search_logs(
     result: Optional[str] = Query(None)
 ):
     client = get_clickhouse_client()
-    if not client: return []
+    if not client: return {"data": [], "total": 0}
     
     where_clauses = ["1=1"]
     if pid: where_clauses.append(f"pid ILIKE '%{pid}%'")
@@ -51,7 +51,12 @@ async def search_logs(
             LIMIT {limit} OFFSET {offset}
         """
         rows = client.execute(query)
-        return [
+        
+        count_query = f"SELECT count() FROM pcb_results l WHERE {where_str}"
+        total_res = client.execute(count_query)
+        total = total_res[0][0] if total_res else 0
+        
+        data = [
             {
                 "id": str(r[0]), "pid": r[1], "timestamp": r[2], "result": r[3], 
                 "file_path": r[4], "jobfile": r[5],
@@ -62,9 +67,11 @@ async def search_logs(
                 "step_ng": r[10] if r[10] else "-"
             } for r in rows
         ]
+        
+        return {"data": data, "total": total}
     except Exception as e:
         print(f"Error searching logs: {e}")
-        return []
+        return {"data": [], "total": 0}
 
 @router.get("/{pcb_id}")
 async def get_log_detail(pcb_id: str):
