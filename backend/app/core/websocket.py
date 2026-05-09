@@ -20,4 +20,23 @@ class ConnectionManager:
                 # Handle disconnected clients that didn't trigger disconnect
                 pass
 
+class AgentManager:
+    def __init__(self):
+        self.active_agents: dict[int, WebSocket] = {}
+
+    async def connect(self, channel_id: int, websocket: WebSocket):
+        await websocket.accept()
+        self.active_agents[channel_id] = websocket
+
+    def disconnect(self, channel_id: int):
+        if channel_id in self.active_agents:
+            del self.active_agents[channel_id]
+
+    async def send_command(self, channel_id: int, message: dict):
+        if channel_id in self.active_agents:
+            await self.active_agents[channel_id].send_json(message)
+            return True
+        return False
+
 manager = ConnectionManager()
+agent_manager = AgentManager()

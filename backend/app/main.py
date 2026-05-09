@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from app.core import config
-from app.core.websocket import manager
+from app.core.websocket import manager, agent_manager
 from app.db.clickhouse import get_clickhouse_client
 from app.api.endpoints import production, statistics, master_data, logs, commands
 
@@ -38,16 +38,32 @@ app.include_router(production.router)
 app.include_router(statistics.router)
 app.include_router(master_data.router)
 app.include_router(logs.router)
+app.include_router(commands.router)
 
 @app.websocket("/ws/logs")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+@app.websocket("/ws/client-command")
+async def agent_websocket_endpoint(
+    websocket: WebSocket, 
+    channel_id: int,
+    mac_address: str = None,
+    ip: str = None,
+    version: str = None
+):
+    await agent_manager.connect(channel_id, websocket)
+    try:
+        while True:
+            # Nhận phản hồi hoặc dữ liệu định kỳ từ agent
+            await websocket.receive_json()
+    except WebSocketDisconnect:
+        agent_manager.disconnect(channel_id)
 
 @app.on_event("startup")
 def startup_event():

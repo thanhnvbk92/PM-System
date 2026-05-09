@@ -15,9 +15,10 @@ import {
   ReloadOutlined,
   InfoCircleOutlined,
   SafetyCertificateOutlined,
-  DesktopOutlined
+  DesktopOutlined,
+  SyncOutlined
 } from '@ant-design/icons';
-import { getMasterData, getAgentHealth, sendAgentCommand, getJobStatus, downloadAgentFile } from '../services/api';
+import { getMasterData, getAgentHealth, sendAgentCommand, getJobStatus, downloadAgentFile, getActiveChannelIds } from '../services/api';
 
 const { Content, Sider } = Layout;
 const { Title, Text } = Typography;
@@ -52,6 +53,7 @@ const CommandCenter = () => {
   const [loading, setLoading] = useState(false);
   const [healthResults, setHealthResults] = useState({}); // { channelId: data }
   const [searchResults, setSearchResults] = useState({}); // { channelId: files }
+  const [activeChannelIds, setActiveChannelIds] = useState([]);
   const [activeJobs, setActiveJobs] = useState([]);
   const [searchForm] = Form.useForm();
   const [modelForm] = Form.useForm();
@@ -59,9 +61,19 @@ const CommandCenter = () => {
   // Load danh sách dữ liệu khi khởi tạo
   useEffect(() => {
     fetchMetadata();
-    const interval = setInterval(updateActiveJobs, 5000);
+    const interval = setInterval(() => {
+      updateActiveJobs();
+      fetchActiveChannels();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchActiveChannels = async () => {
+    const resp = await getActiveChannelIds();
+    if (resp.success) {
+      setActiveChannelIds(resp.data);
+    }
+  };
 
   const fetchMetadata = async () => {
     setLoading(true);
@@ -77,6 +89,9 @@ const CommandCenter = () => {
       if (lineResp.success) setLines(lineResp.data);
       if (mgResp.success) setModelGroups(mgResp.data);
       if (stResp.success) setStations(stResp.data);
+      
+      // Lấy luôn trạng thái hoạt động ban đầu
+      fetchActiveChannels();
     } catch (error) {
       console.error("Fetch metadata error:", error);
     } finally {
@@ -408,7 +423,23 @@ const CommandCenter = () => {
                             size="small" 
                             bordered={false} 
                             style={{ background: '#0f172a', border: '1px solid #1e293b' }}
-                            extra={<Badge status={isOnline ? 'success' : 'error'} text={<small style={{ color: isOnline ? '#4ade80' : '#f87171' }}>{isOnline ? 'Online' : 'Offline'}</small>} />}
+                            extra={
+                              <Space>
+                                <Tooltip title="Dựa trên dữ liệu Log gửi về Server (Giống Master Data)">
+                                  <Badge 
+                                    status={activeChannelIds.includes(ch.id) ? 'processing' : 'default'} 
+                                    text={<small style={{ color: activeChannelIds.includes(ch.id) ? '#38bdf8' : '#94a3b8' }}>Heartbeat</small>} 
+                                  />
+                                </Tooltip>
+                                <Divider type="vertical" style={{ borderColor: '#1e293b' }} />
+                                <Tooltip title="Khả năng kết nối để điều khiển (Port 8100)">
+                                  <Badge 
+                                    status={isOnline ? 'success' : 'error'} 
+                                    text={<small style={{ color: isOnline ? '#4ade80' : '#f87171' }}>Agent</small>} 
+                                  />
+                                </Tooltip>
+                              </Space>
+                            }
                           >
                             {isOnline ? (
                               <Descriptions column={2} size="small">

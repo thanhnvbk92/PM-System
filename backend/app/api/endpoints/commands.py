@@ -5,6 +5,7 @@ from typing import List, Optional, Any
 import httpx
 from app.db.clickhouse import get_clickhouse_client
 from app.core import config
+from app.core.websocket import agent_manager
 import os
 
 router = APIRouter(prefix="/api/commands")
@@ -63,8 +64,12 @@ def get_auth_headers():
 
 @router.get("/{channel_id}/health")
 async def agent_health(channel_id: int):
+    # Ưu tiên kiểm tra WebSocket
+    if channel_id in agent_manager.active_agents:
+        return {"status": "healthy", "mode": "websocket"}
+        
     base_url = await get_agent_base_url(channel_id)
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient(timeout=3.0) as client:
         try:
             resp = await client.get(f"{base_url}/health", headers=get_auth_headers())
             return resp.json()
