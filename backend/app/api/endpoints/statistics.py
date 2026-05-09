@@ -291,8 +291,8 @@ async def get_analytics_dashboard(
             {step_join}
             WHERE {base_where}
             GROUP BY name
-            ORDER BY errors DESC
-            LIMIT 20
+            ORDER BY rate DESC
+            LIMIT 10
         """
 
         q_channel = f"""
@@ -304,8 +304,8 @@ async def get_analytics_dashboard(
             {step_join}
             WHERE {base_where}
             GROUP BY name
-            ORDER BY errors DESC
-            LIMIT 20
+            ORDER BY rate DESC
+            LIMIT 10
         """
 
         q_errors = f"""

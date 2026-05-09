@@ -111,10 +111,18 @@ const Analytics = () => {
   // -- Chart Options Generators --
 
   const getLineChartOptions = (data) => {
-    const total = data.series && data.series[0] ? data.series[0].data.reduce((sum, val) => sum + val, 0) : 0;
-    
     return {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'cross' },
+        formatter: (params) => {
+          let res = `${params[0].name}<br/>`;
+          params.forEach(p => {
+            res += `${p.marker} ${p.seriesName}: <b>${p.value}%</b> (${p.data.count.toLocaleString()})<br/>`;
+          });
+          return res;
+        }
+      },
       grid: { left: '3%', right: '4%', bottom: '10%', top: '10%', containLabel: true },
       xAxis: {
         type: 'category',
@@ -125,8 +133,12 @@ const Analytics = () => {
       },
       yAxis: {
         type: 'value',
+        name: 'NG Rate (%)',
         nameTextStyle: { color: 'rgba(255, 255, 255, 0.45)' },
-        axisLabel: { color: 'rgba(255, 255, 255, 0.45)' },
+        axisLabel: { 
+          color: 'rgba(255, 255, 255, 0.45)',
+          formatter: '{value}%'
+        },
         splitLine: { lineStyle: { color: '#1e293b' } }
       },
       series: data.series ? data.series.map(s => ({
@@ -135,8 +147,8 @@ const Analytics = () => {
         smooth: true,
         symbolSize: 6,
         data: s.data ? s.data.map((val, idx) => ({
-          value: val,
-          rate: s.rates ? s.rates[idx] : 0
+          value: s.rates ? s.rates[idx] : 0,
+          count: val
         })) : [],
         itemStyle: { color: '#3b82f6' },
         label: {
@@ -145,10 +157,10 @@ const Analytics = () => {
           color: 'rgba(255, 255, 255, 0.85)',
           fontSize: 10,
           formatter: (params) => {
-            const val = params.value;
-            const rate = params.data.rate;
-            if (rate === 0 && val === 0) return '';
-            return `${rate}%\n(${val.toLocaleString()})`;
+            const rate = params.value;
+            const count = params.data.count;
+            if (rate === 0 && count === 0) return '';
+            return `${rate}%\n(${count.toLocaleString()})`;
           }
         },
         areaStyle: {
@@ -165,9 +177,15 @@ const Analytics = () => {
   };
 
   const getBarChartOptions = (dataList, filterType, color = '#10b981') => {
-    const total = dataList.reduce((sum, d) => sum + d.value, 0);
     return {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'shadow' },
+        formatter: (params) => {
+          const p = params[0];
+          return `${p.name}<br/>${p.marker} NG Rate: <b>${p.value}%</b> (${p.data.count.toLocaleString()})`;
+        }
+      },
       grid: { left: '3%', right: '4%', bottom: '10%', top: '10%', containLabel: true },
       xAxis: {
         type: 'category',
@@ -177,15 +195,18 @@ const Analytics = () => {
       },
       yAxis: {
         type: 'value',
-        axisLabel: { color: 'rgba(255, 255, 255, 0.45)' },
+        axisLabel: { 
+          color: 'rgba(255, 255, 255, 0.45)',
+          formatter: '{value}%'
+        },
         splitLine: { lineStyle: { color: '#1e293b' } }
       },
       series: [
         {
           type: 'bar',
           data: dataList.map(d => ({
-            value: d.value,
-            rate: d.rate,
+            value: d.rate, // Plot rate
+            count: d.value, // Store count
             itemStyle: {
               color: filters[filterType] === d.name ? '#f59e0b' : color, // Highlight selected
               opacity: (filters[filterType] && filters[filterType] !== d.name) ? 0.3 : 1
@@ -198,10 +219,10 @@ const Analytics = () => {
             color: 'rgba(255, 255, 255, 0.85)',
             fontSize: 10,
             formatter: (params) => {
-              const val = params.value;
-              const rate = params.data.rate;
-              if (rate === 0 && val === 0) return ''; 
-              return `${rate}%\n(${val.toLocaleString()})`;
+              const rate = params.value;
+              const count = params.data.count;
+              if (rate === 0 && count === 0) return ''; 
+              return `${rate}%\n(${count.toLocaleString()})`;
             }
           }
         }
@@ -212,11 +233,21 @@ const Analytics = () => {
   const getHorizontalBarChartOptions = (dataList, filterType, color = '#ef4444') => {
     const total = dataList.reduce((sum, d) => sum + d.value, 0);
     return {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'shadow' },
+        formatter: (params) => {
+          const p = params[0];
+          return `${p.name}<br/>${p.marker} Errors: <b>${p.data.count.toLocaleString()}</b> (${p.value}%)`;
+        }
+      },
       grid: { left: '5%', right: '10%', bottom: '5%', top: '5%', containLabel: true },
       xAxis: {
         type: 'value',
-        axisLabel: { color: 'rgba(255, 255, 255, 0.45)' },
+        axisLabel: { 
+          color: 'rgba(255, 255, 255, 0.45)',
+          formatter: '{value}%'
+        },
         splitLine: { lineStyle: { color: '#1e293b' } }
       },
       yAxis: {
@@ -233,13 +264,17 @@ const Analytics = () => {
       series: [
         {
           type: 'bar',
-          data: dataList.map(d => ({
-            value: d.value,
-            itemStyle: {
-              color: filters[filterType] === d.name ? '#f59e0b' : color, // Highlight selected
-              opacity: (filters[filterType] && filters[filterType] !== d.name) ? 0.3 : 1
-            }
-          })),
+          data: dataList.map(d => {
+            const percent = total > 0 ? parseFloat(((d.value / total) * 100).toFixed(1)) : 0;
+            return {
+              value: percent, // Plot calculated percent
+              count: d.value, // Store original count
+              itemStyle: {
+                color: filters[filterType] === d.name ? '#f59e0b' : color, // Highlight selected
+                opacity: (filters[filterType] && filters[filterType] !== d.name) ? 0.3 : 1
+              }
+            };
+          }),
           borderRadius: [0, 4, 4, 0],
           label: { 
             show: true, 
@@ -247,9 +282,7 @@ const Analytics = () => {
             color: 'rgba(255, 255, 255, 0.85)',
             fontSize: 11,
             formatter: (params) => {
-              const val = params.value;
-              const percent = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-              return `${percent}% (${val.toLocaleString()})`;
+              return `${params.value}% (${params.data.count.toLocaleString()})`;
             }
           }
         }
