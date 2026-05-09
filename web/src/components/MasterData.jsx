@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Card, Modal, Form, Input, InputNumber, notification, Tag, Typography, Select, Tabs, Segmented } from 'antd';
+import { Table, Button, Space, Card, Modal, Form, Input, InputNumber, notification, Tag, Typography, Select, Tabs, Segmented, Row, Col } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, DatabaseOutlined, DownloadOutlined, UploadOutlined, SyncOutlined, SearchOutlined } from '@ant-design/icons';
 import { getMasterData, saveMasterData, deleteMasterData, importMasterData, getActiveChannelIds } from '../services/api';
 import { message } from 'antd';
@@ -28,12 +28,43 @@ const MasterData = ({ isServerConnected }) => {
   const [lookups, setLookups] = useState({});
   const [activeChannelIds, setActiveChannelIds] = useState([]);
   const [form] = Form.useForm();
+  const [tableFilters, setTableFilters] = useState({});
   
   const [searchText, setSearchText] = useState('');
   const [parentFilter, setParentFilter] = useState(null);
   
   // State cho việc lọc Station theo Line trong form Channel
   const [selectedLine, setSelectedLine] = useState(null);
+
+  // Hàm kiểm tra một hàng dữ liệu có khớp với các bộ lọc hiện tại (trừ cột đang xét) hay không
+  const matchOtherFilters = (item, filters, currentKey) => {
+    return Object.entries(filters).every(([key, values]) => {
+      if (!values || values.length === 0 || key === currentKey) return true;
+      
+      // Xử lý cột ảo LINE trong bảng channels
+      if (key === 'line_name') {
+        const station = lookups.stations?.find(s => s.id === item.station_id);
+        return station && values.includes(station.line_id);
+      }
+      
+      // Xử lý cột ảo STATUS trong bảng channels
+      if (key === 'status') {
+        const isOnline = activeChannelIds.includes(item.id);
+        const statusStr = isOnline ? 'ON' : 'OFF';
+        return values.includes(statusStr);
+      }
+
+      // Nếu là trường lookup (ID), so khớp chính xác
+      if (lookupMap[key]) {
+        return values.includes(item[key]);
+      }
+
+      // Nếu là trường text (IP, Name, GMES Name...), so khớp chứa chuỗi (giống Excel)
+      return values.some(v => 
+        String(item[key] || '').toLowerCase().includes(String(v).toLowerCase())
+      );
+    });
+  };
 
   // Mapping các trường _id sang entity tương ứng để lấy dữ liệu dropdown
   const lookupMap = {
@@ -79,11 +110,13 @@ const MasterData = ({ isServerConnected }) => {
       }
     }
     setLookups(newLookups);
+    return newLookups; // Trả về để dùng ngay
   };
 
   useEffect(() => {
     setSearchText('');
     setParentFilter(null);
+    setTableFilters({}); // Reset bộ lọc khi đổi bảng
     fetchData();
     fetchLookups(); 
     
@@ -112,11 +145,11 @@ const MasterData = ({ isServerConnected }) => {
 
   const handleEdit = async (record) => {
     setEditingItem(record);
-    await fetchLookups(true); // Đợi làm mới dữ liệu dropdown
+    const latestLookups = await fetchLookups(true); // Đợi làm mới dữ liệu và lấy trực tiếp
     
     // Nếu là channel, tìm line_id tương ứng của station_id để set vào state lọc
-    if (activeEntity === 'channels' && record.station_id && lookups.stations) {
-      const station = lookups.stations.find(s => s.id === record.station_id);
+    if (activeEntity === 'channels' && record.station_id && latestLookups.stations) {
+      const station = latestLookups.stations.find(s => s.id === record.station_id);
       if (station) {
         setSelectedLine(station.line_id);
         form.setFieldsValue({ ...record, line_id: station.line_id });
@@ -281,13 +314,17 @@ const MasterData = ({ isServerConnected }) => {
         : false,
   });
 
-  const columns = data.length > 0 ? Object.keys(data[0]).map(key => {
-    let width = 120;
+  const columns = data.length > 0 ? Object.keys(data[0])
+    .filter(key => !(activeEntity === 'channels' && key === 'status')) // Bỏ cột status thô từ DB cho channels
+    .map(key => {
+    let width = 110;
     const title = key.toUpperCase();
-    if (key === 'id') width = 70;
-    else if (key === 'name') width = 180;
-    else if (key === 'remark') width = 200;
-    else if (key.endsWith('_id')) width = 140;
+    if (key === 'id') width = 60;
+    else if (key === 'name') width = 160;
+    else if (key === 'remark') width = 180;
+    else if (key.endsWith('_id')) width = 130;
+    else if (key === 'ip_address' || key === 'mac_address') width = 130;
+    else if (key === 'gmes_name') width = 120;
 
     const columnDef = {
       title: title,
@@ -318,35 +355,72 @@ const MasterData = ({ isServerConnected }) => {
       }
     };
 
-    // Thêm bộ lọc cho từng cột
     const entityLookup = lookupMap[key];
     if (entityLookup && lookups[entityLookup]) {
-      // Bộ lọc dạng checkbox cho các trường lookup (Line, Station, v.v.)
-      columnDef.filters = lookups[entityLookup].map(l => ({ text: l.name, value: l.id }));
+      const availableValues = new Set(
+        data.filter(item => matchOtherFilters(item, tableFilters, key))
+            .map(item => item[key])
+      );
+      
+      columnDef.filters = lookups[entityLookup]
+        .filter(l => availableValues.has(l.id))
+        .map(l => ({ text: l.name, value: l.id }));
+      
+      columnDef.filteredValue = tableFilters[key] || null;
       columnDef.filterSearch = true;
-      columnDef.onFilter = (value, record) => record[key] === value;
     } else if (key !== 'id') {
-      // Bộ lọc dạng tìm kiếm cho các trường text/số
       Object.assign(columnDef, getColumnSearchProps(key, title));
+      columnDef.filteredValue = tableFilters[key] || null;
     }
 
     return columnDef;
   }) : [];
 
-  // Thêm cột STATUS cho riêng bảng channels
   if (activeEntity === 'channels' && columns.length > 0) {
+    columns.splice(1, 0, {
+      title: 'LINE',
+      key: 'line_name',
+      width: 100,
+      render: (_, record) => {
+        const station = lookups.stations?.find(s => s.id === record.station_id);
+        if (station) {
+          const line = lookups.lines?.find(l => l.id === station.line_id);
+          return line ? <Tag color="blue" style={{ borderRadius: 4 }}>{line.name}</Tag> : '-';
+        }
+        return '-';
+      },
+      filters: (() => {
+        const availableLines = new Set(
+          data.filter(item => matchOtherFilters(item, tableFilters, 'line_name'))
+              .map(item => {
+                const station = lookups.stations?.find(s => s.id === item.station_id);
+                return station?.line_id;
+              })
+              .filter(id => id !== undefined)
+        );
+        return lookups.lines?.filter(l => availableLines.has(l.id)).map(l => ({ text: l.name, value: l.id })) || [];
+      })(),
+      filteredValue: tableFilters.line_name || null
+    });
+
     columns.splice(2, 0, {
       title: 'STATUS',
       key: 'status',
-      width: 100,
+      width: 90,
+      align: 'center',
       render: (_, record) => {
         const isOnline = activeChannelIds.includes(record.id);
         return (
-          <Tag color={isOnline ? 'success' : 'default'} style={{ borderRadius: 4 }}>
-            {isOnline ? 'ONLINE' : 'OFFLINE'}
+          <Tag color={isOnline ? 'success' : 'default'} style={{ borderRadius: 4, margin: 0 }}>
+            {isOnline ? 'ON' : 'OFF'}
           </Tag>
         );
-      }
+      },
+      filters: [
+        { text: 'ON', value: 'ON' },
+        { text: 'OFF', value: 'OFF' }
+      ],
+      filteredValue: tableFilters.status || null
     });
   }
 
@@ -371,17 +445,15 @@ const MasterData = ({ isServerConnected }) => {
           <Text type="secondary" style={{ fontSize: '15px' }}>Quản lý cấu hình hệ thống và dữ liệu danh mục</Text>
         </div>
         <Space size={8}>
-          {/* General Search */}
           <Input 
             placeholder={`Tìm kiếm trong ${entities.find(e => e.id === activeEntity)?.name}...`}
             allowClear
-            prefix={<PlusOutlined rotate={45} style={{ color: 'rgba(255,255,255,0.45)' }} />} // Using PlusOutlined rotate for search icon as placeholder if SearchOutlined not available
+            prefix={<PlusOutlined rotate={45} style={{ color: 'rgba(255,255,255,0.45)' }} />}
             onChange={e => setSearchText(e.target.value)}
             value={searchText}
             style={{ width: 220, borderRadius: 8, height: 38, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
           />
 
-          {/* Parent-Entity Filter Dropdowns */}
           {(activeEntity === 'stations' || activeEntity === 'model_group') && (
             <Select
               placeholder="Lọc theo Line"
@@ -509,23 +581,22 @@ const MasterData = ({ isServerConnected }) => {
           columns={columns} 
           dataSource={data
             .filter(item => {
-              // General Text Search
+              // 1. Search Text (Global)
               if (searchText) {
                 const searchLower = searchText.toLowerCase();
                 const match = Object.entries(item).some(([key, val]) => {
                   if (key === 'key') return false;
-                  // Nếu là trường lookup, tìm kiếm theo tên trong lookup
                   const lookupEntity = lookupMap[key];
                   if (lookupEntity && lookups[lookupEntity]) {
                     const found = lookups[lookupEntity].find(l => l.id === val);
                     if (found && found.name.toLowerCase().includes(searchLower)) return true;
                   }
-                  return String(val).toLowerCase().includes(searchLower);
+                  return String(val || '').toLowerCase().includes(searchLower);
                 });
                 if (!match) return false;
               }
 
-              // Parent-Entity Filtering
+              // 2. Parent Filter (Dropdowns)
               if (parentFilter) {
                 if (activeEntity === 'stations' || activeEntity === 'model_group') {
                   if (item.line_id !== parentFilter) return false;
@@ -534,11 +605,13 @@ const MasterData = ({ isServerConnected }) => {
                 } else if (activeEntity === 'models') {
                   if (item.model_group_id !== parentFilter) return false;
                 } else if (activeEntity === 'devices') {
-                  // Lọc Device theo Station (thông qua Channel)
                   const channel = (lookups.channels || []).find(c => c.id === item.channel_id);
                   if (!channel || channel.station_id !== parentFilter) return false;
                 }
               }
+
+              // 3. Column Filters (Cascading Excel-like)
+              if (!matchOtherFilters(item, tableFilters, null)) return false;
               
               return true;
             })
@@ -546,6 +619,7 @@ const MasterData = ({ isServerConnected }) => {
           } 
           loading={loading}
           size="small"
+          onChange={(pagination, filters) => setTableFilters(filters)}
           pagination={{ 
             pageSize: 15,
             showSizeChanger: true,
@@ -585,74 +659,83 @@ const MasterData = ({ isServerConnected }) => {
         onCancel={() => setIsModalVisible(false)}
         okText="Lưu dữ liệu"
         cancelText="Hủy bỏ"
-        width={600}
+        width={800}
+        bodyStyle={{ maxHeight: '70vh', overflowY: 'auto', overflowX: 'hidden' }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 20 }}>
-          {/* Trường hợp đặc biệt: Channel cần lọc Station theo Line */}
-          {activeEntity === 'channels' && (
-            <Form.Item
-              name="line_id"
-              label="LINE"
-              rules={[{ required: true, message: 'Vui lòng chọn Line' }]}
-            >
-              <Select
-                placeholder="Chọn Line trước"
-                onChange={(val) => {
-                  setSelectedLine(val);
-                  form.setFieldsValue({ station_id: undefined }); // Reset station khi đổi line
-                }}
-              >
-                {lookups.lines?.map(line => (
-                  <Option key={line.id} value={line.id}>{line.name}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-          )}
-
-          {columns.filter(col => col.key !== 'actions').map(col => {
-            // Ẩn trường ID khi thêm mới
-            if (col.key === 'id' && !editingItem) return null;
-            
-            // Trường station_id trong bảng channels sẽ được xử lý đặc biệt (lọc theo line)
-            const isLookupField = lookupMap[col.key];
-
-            return (
-              <Form.Item
-                key={col.key}
-                name={col.key}
-                label={col.title}
-                rules={[{
-                  required: col.key !== 'id' && (col.key === 'name' || col.key.endsWith('_id')),
-                  message: `Vui lòng nhập ${col.title}`
-                }]}
-              >
-                {isLookupField ? (
+          <Row gutter={16}>
+            {/* Trường hợp đặc biệt: Channel cần lọc Station theo Line */}
+            {activeEntity === 'channels' && (
+              <Col span={12}>
+                <Form.Item
+                  name="line_id"
+                  label="LINE"
+                  rules={[{ required: true, message: 'Vui lòng chọn Line' }]}
+                >
                   <Select
-                    placeholder={`Chọn ${col.title}`}
-                    showSearch
-                    filterOption={(input, option) =>
-                      (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
-                    disabled={col.key === 'station_id' && activeEntity === 'channels' && !selectedLine}
+                    placeholder="Chọn Line trước"
+                    onChange={(val) => {
+                      setSelectedLine(val);
+                      form.setFieldsValue({ station_id: undefined }); // Reset station khi đổi line
+                    }}
                   >
-                    {/* Nếu là bảng channel và là trường station_id, lọc theo selectedLine */}
-                    {(col.key === 'station_id' && activeEntity === 'channels' && selectedLine)
-                      ? lookups.stations?.filter(s => s.line_id === selectedLine).map(item => (
-                          <Option key={item.id} value={item.id}>{item.name}</Option>
-                        ))
-                      : lookups[isLookupField]?.map(item => (
-                          <Option key={item.id} value={item.id}>{item.name}</Option>
-                        ))
-                    }
+                    {lookups.lines?.map(line => (
+                      <Option key={line.id} value={line.id}>{line.name}</Option>
+                    ))}
                   </Select>
-                ) : (
-                  col.key === 'id' || col.key.endsWith('_id') ?
-                    <InputNumber style={{ width: '100%' }} disabled={col.key === 'id'} /> :
-                    <Input />
-                )}
-              </Form.Item>
-            );
-          })}
+                </Form.Item>
+              </Col>
+            )}
+
+            {columns.filter(col => col.key !== 'actions' && col.key !== 'status').map(col => {
+              // Ẩn trường ID khi thêm mới
+              if (col.key === 'id' && !editingItem) return null;
+              
+              // Trường station_id trong bảng channels sẽ được xử lý đặc biệt (lọc theo line)
+              const isLookupField = lookupMap[col.key];
+
+              // Xác định độ rộng cột: mặc định 12 (50%), riêng Remark/Status có thể để 24 nếu muốn
+              const colSpan = (col.key === 'remark' || col.key === 'status') ? 24 : 12;
+
+              return (
+                <Col span={colSpan} key={col.key}>
+                  <Form.Item
+                    name={col.key}
+                    label={col.title}
+                    rules={[{
+                      required: col.key !== 'id' && (col.key === 'name' || col.key.endsWith('_id')),
+                      message: `Vui lòng nhập ${col.title}`
+                    }]}
+                  >
+                    {isLookupField ? (
+                      <Select
+                        placeholder={`Chọn ${col.title}`}
+                        showSearch
+                        filterOption={(input, option) =>
+                          (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                        }
+                        disabled={col.key === 'station_id' && activeEntity === 'channels' && !selectedLine}
+                      >
+                        {/* Nếu là bảng channel và là trường station_id, lọc theo selectedLine */}
+                        {(col.key === 'station_id' && activeEntity === 'channels' && selectedLine)
+                          ? lookups.stations?.filter(s => s.line_id === selectedLine).map(item => (
+                              <Option key={item.id} value={item.id}>{item.name}</Option>
+                            ))
+                          : lookups[isLookupField]?.map(item => (
+                              <Option key={item.id} value={item.id}>{item.name}</Option>
+                            ))
+                        }
+                      </Select>
+                    ) : (
+                      col.key === 'id' || col.key.endsWith('_id') ?
+                        <InputNumber style={{ width: '100%' }} disabled={col.key === 'id'} /> :
+                        <Input />
+                    )}
+                  </Form.Item>
+                </Col>
+              );
+            })}
+          </Row>
         </Form>
       </Modal>
     </div>
