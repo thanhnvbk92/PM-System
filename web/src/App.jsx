@@ -5,6 +5,7 @@ import {
   SettingOutlined,
   DatabaseOutlined,
   AreaChartOutlined,
+  ControlOutlined,
 } from '@ant-design/icons';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import useStore from './store/useStore';
@@ -14,6 +15,7 @@ import Dashboard from './components/Dashboard.jsx';
 import Analytics from './components/Analytics.jsx';
 import LogViewer from './components/LogViewer.jsx';
 import MasterData from './components/MasterData.jsx';
+import CommandCenter from './components/CommandCenter.jsx';
 import './App.css';
 
 const { Content, Sider, Footer } = Layout;
@@ -39,6 +41,7 @@ function App() {
   const menuItems = [
     { key: 'dashboard', icon: <DashboardOutlined />, label: <Link to="/dashboard">Dashboard</Link> },
     { key: 'analytics', icon: <AreaChartOutlined />, label: <Link to="/analytics">Analytics</Link> },
+    { key: 'command', icon: <ControlOutlined />, label: <Link to="/command">Command</Link> },
     { key: 'master', icon: <SettingOutlined />, label: <Link to="/master">Master Data</Link> },
     { key: 'logs', icon: <DatabaseOutlined />, label: <Link to="/logs">Production Data</Link> },
   ];
@@ -93,6 +96,7 @@ function App() {
                <Routes>
                   <Route path="/dashboard" element={<Dashboard isServerConnected={isServerConnected} />} />
                   <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/command" element={<CommandCenter />} />
                   <Route path="/master" element={<MasterData isServerConnected={isServerConnected} />} />
                   <Route path="/logs" element={<LogViewer isServerConnected={isServerConnected} />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />

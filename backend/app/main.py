@@ -4,12 +4,12 @@ from datetime import datetime
 from app.core import config
 from app.core.websocket import manager
 from app.db.clickhouse import get_clickhouse_client
-from app.api.endpoints import production, statistics, master_data, logs
+from app.api.endpoints import production, statistics, master_data, logs, commands
 
 app = FastAPI(
     title="PM System Backend",
     description="Modular API for Log Collection and Production Analysis",
-    version="1.4.0"
+    version="1.5.0"
 )
 
 # CORS configuration

@@ -178,4 +178,48 @@ export const importMasterData = async (entity, data) => {
   }
 };
 
+// Command Endpoints
+export const sendAgentCommand = async (channelId, action, params = {}) => {
+  try {
+    // action có thể là 'files/search', 'files/pull', 'files/push', 'update', 'model/change'
+    const response = await apiClient.post(`/api/commands/${channelId}/${action}`, params);
+    return { success: true, data: response.data };
+  } catch (error) {
+    const errorMsg = error.response?.data?.detail || error.message;
+    return { success: false, error: errorMsg };
+  }
+};
+
+export const getAgentHealth = async (channelId) => {
+  try {
+    const response = await apiClient.get(`/api/commands/${channelId}/health`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    const errorMsg = error.response?.data?.detail || error.message;
+    return { success: false, error: errorMsg };
+  }
+};
+
+export const getJobStatus = async (channelId, jobId) => {
+  try {
+    const response = await apiClient.get(`/api/commands/${channelId}/jobs/${jobId}`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    const errorMsg = error.response?.data?.detail || error.message;
+    return { success: false, error: errorMsg };
+  }
+};
+
+export const downloadAgentFile = async (channelId, params) => {
+  try {
+    const response = await apiClient.post(`/api/commands/${channelId}/files/export`, params, {
+      responseType: 'blob'
+    });
+    return { success: true, data: response.data };
+  } catch (error) {
+    const errorMsg = error.response?.data?.detail || error.message;
+    return { success: false, error: errorMsg };
+  }
+};
+
 export default apiClient;

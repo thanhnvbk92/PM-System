@@ -38,123 +38,65 @@ async def submit_pcb_result(data: PCBResultInput):
     if not client:
         raise HTTPException(status_code=503, detail="Database not connected")
     
-    # Get hierarchy info for de-normalization (Essential for scale)
+    # Get hierarchy info for de-normalization
     hierarchy = await get_channel_hierarchy(data.channel_id)
     
-    # Use deterministic UUID to prevent duplicates
-    # Generate a unique ID based on PID, channel_id, and exact start_time
+    # Use deterministic UUID based on PID, channel_id, and start_time
     unique_string = f"{data.pid}_{data.channel_id}_{data.start_time.timestamp()}"
     pcb_id = uuid.uuid5(uuid.NAMESPACE_OID, unique_string)
     
     try:
-        # Check if this record already exists to prevent duplicate (compatible with old random UUIDs)
-        existing = client.execute(f"SELECT id FROM pcb_results WHERE pid = '{data.pid}' AND channel_id = {data.channel_id} AND start_time = '{data.start_time}'")
-        if existing:
-            # Already exists, just return success without inserting
-            return {"status": "success", "id": str(pcb_id), "steps_count": len(data.steps), "duplicate": True}
-
-        pcb_row = [[
-            pcb_id, data.channel_id, data.model_id, data.pid, data.fid,
-            data.pcba_partno, data.start_time, data.end_time, data.test_time,
-            data.result, data.file_path, data.jobfile,
-            hierarchy["station_id"], hierarchy["line_id"], hierarchy["buyer_id"]
-        ]]
-        client.execute(
-            """INSERT INTO pcb_results (
-                id, channel_id, model_id, pid, fid, pcba_partno, 
-                start_time, end_time, test_time, result, file_path, jobfile,
-                station_id, line_id, buyer_id
-            ) VALUES""",
-            pcb_row
-        )
+        # 1. Check if PCB already exists
+        pcb_exists = client.execute(f"SELECT id FROM pcb_results WHERE id = '{str(pcb_id)}'")
+        
+        # 2. Check if Steps already exist for this PCB
+        steps_exist = False
         if data.steps:
+            steps_check = client.execute(f"SELECT pcb_result_id FROM test_steps WHERE pcb_result_id = '{str(pcb_id)}' LIMIT 1")
+            steps_exist = bool(steps_check)
+
+        inserted_pcb = False
+        inserted_steps = 0
+
+        # Logic: Insert PCB if not exists
+        if not pcb_exists:
+            pcb_row = [[
+                pcb_id, data.channel_id, data.model_id, data.pid, data.fid,
+                data.pcba_partno, data.start_time, data.end_time, data.test_time,
+                data.result, data.file_path, data.jobfile,
+                hierarchy["station_id"], hierarchy["line_id"], hierarchy["buyer_id"]
+            ]]
+            client.execute(
+                """INSERT INTO pcb_results (
+                    id, channel_id, model_id, pid, fid, pcba_partno, 
+                    start_time, end_time, test_time, result, file_path, jobfile,
+                    station_id, line_id, buyer_id
+                ) VALUES""",
+                pcb_row
+            )
+            inserted_pcb = True
+
+        # Logic: Insert Steps if they don't exist yet (even if PCB existed)
+        if data.steps and not steps_exist:
             steps_rows = [[pcb_id, s.step_type, s.step_number, s.step_name, s.value, s.spec_min, s.spec_max, s.result] for s in data.steps]
             client.execute(
                 "INSERT INTO test_steps (pcb_result_id, step_type, step_number, step_name, value, spec_min, spec_max, result) VALUES",
                 steps_rows
             )
+            inserted_steps = len(data.steps)
         
-        # Broadcast via WebSocket for real-time view
-        await manager.broadcast({
-            "type": "NEW_RESULT",
-            "data": {
-                "id": str(pcb_id),
-                "channel_id": data.channel_id,
-                "model_id": data.model_id,
-                "pid": data.pid,
-                "fid": data.fid,
-                "pcba_partno": data.pcba_partno,
-                "start_time": data.start_time.isoformat() if data.start_time else None,
-                "end_time": data.end_time.isoformat() if data.end_time else None,
-                "test_time": data.test_time,
-                "result": data.result,
-                "file_path": data.file_path,
-                "jobfile": data.jobfile,
-                "station_id": hierarchy["station_id"],
-                "line_id": hierarchy["line_id"],
-                "buyer_id": hierarchy["buyer_id"]
+        # Determine final status
+        if not inserted_pcb and inserted_steps == 0:
+            return {
+                "status": "success", 
+                "message": "Record already fully exists", 
+                "id": str(pcb_id), 
+                "duplicate": True
             }
-        })
 
-        return {"status": "success", "id": str(pcb_id), "steps_count": len(data.steps)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.post("/production/submit_batch")
-async def submit_pcb_result_batch(items: List[PCBResultInput]):
-    client = get_clickhouse_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database not connected")
-    
-    pcb_rows = []
-    steps_rows = []
-    ng_results = []
-    ws_messages = []
-
-    try:
-        # Pre-calculate deterministic UUIDs and keys for the batch
-        batch_ids = []
-        batch_keys = []
-        for data in items:
-            unique_string = f"{data.pid}_{data.channel_id}_{data.start_time.timestamp()}"
-            batch_ids.append(uuid.uuid5(uuid.NAMESPACE_OID, unique_string))
-            # Format datetime properly for ClickHouse tuple query
-            time_str = data.start_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            batch_keys.append(f"('{data.pid}', {data.channel_id}, '{time_str}')")
-        
-        # Check which ones already exist
-        existing_keys = set()
-        if batch_keys:
-            query = f"SELECT pid, channel_id, start_time FROM pcb_results WHERE (pid, channel_id, start_time) IN ({','.join(batch_keys)})"
-            res = client.execute(query)
-            # res contains tuples like (pid, channel_id, datetime_obj)
-            for row in res:
-                # Format to compare easily
-                existing_keys.add(f"{row[0]}_{row[1]}_{row[2].timestamp()}")
-
-        for i, data in enumerate(items):
-            pcb_id = batch_ids[i]
-            key_check = f"{data.pid}_{data.channel_id}_{data.start_time.timestamp()}"
-            
-            # Skip if it already exists (compatible with old random UUIDs)
-            if key_check in existing_keys:
-                continue
-                
-            hierarchy = await get_channel_hierarchy(data.channel_id)
-            
-            pcb_rows.append([
-                pcb_id, data.channel_id, data.model_id, data.pid, data.fid,
-                data.pcba_partno, data.start_time, data.end_time, data.test_time,
-                data.result, data.file_path, data.jobfile,
-                hierarchy["station_id"], hierarchy["line_id"], hierarchy["buyer_id"]
-            ])
-            
-            if data.steps:
-                for s in data.steps:
-                    steps_rows.append([pcb_id, s.step_type, s.step_number, s.step_name, s.value, s.spec_min, s.spec_max, s.result])
-            
-            # Prepare WebSocket broadcast data
-            ws_messages.append({
+        # Broadcast via WebSocket (only for new PCB results)
+        if inserted_pcb:
+            await manager.broadcast({
                 "type": "NEW_RESULT",
                 "data": {
                     "id": str(pcb_id),
@@ -175,43 +117,176 @@ async def submit_pcb_result_batch(items: List[PCBResultInput]):
                 }
             })
 
-            # Track NG results
-            if data.result != "OK":
-                ng_results.append({
-                    "pid": data.pid,
-                    "result": data.result,
-                    "channel_id": data.channel_id,
-                    "start_time": data.start_time
+        return {
+            "status": "success", 
+            "id": str(pcb_id), 
+            "inserted_pcb": inserted_pcb,
+            "inserted_steps": inserted_steps
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.post("/production/submit_batch")
+async def submit_pcb_result_batch(items: List[PCBResultInput]):
+    client = get_clickhouse_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="Database not connected")
+    
+    results = []
+    pcb_rows_to_insert = []
+    steps_rows_to_insert = []
+    ws_messages = []
+    
+    # Summary counters
+    summary = {"total": len(items), "success": 0, "failed": 0, "skipped": 0}
+
+    try:
+        # 1. Pre-calculate IDs and unique channels
+        item_ids = []
+        channel_ids = set()
+        for item in items:
+            unique_string = f"{item.pid}_{item.channel_id}_{item.start_time.timestamp()}"
+            pcb_id = uuid.uuid5(uuid.NAMESPACE_OID, unique_string)
+            item_ids.append(pcb_id)
+            channel_ids.add(item.channel_id)
+        
+        # 2. Pre-fetch Hierarchy (Bulk)
+        hierarchy_map = {}
+        if channel_ids:
+            ids_str = ",".join(map(str, channel_ids))
+            h_query = f"""
+                SELECT c.id, c.station_id, s.line_id, mg.buyer_id
+                FROM channels c FINAL
+                LEFT JOIN stations s FINAL ON c.station_id = s.id
+                LEFT JOIN model_group mg FINAL ON s.model_group_id = mg.id
+                WHERE c.id IN ({ids_str})
+            """
+            h_rows = client.execute(h_query)
+            for r in h_rows:
+                hierarchy_map[r[0]] = {"station_id": r[1], "line_id": r[2], "buyer_id": r[3]}
+
+        # 3. Check existing records (Bulk)
+        existing_pcb_ids = set()
+        existing_step_pcb_ids = set()
+        if item_ids:
+            ids_sql = ",".join([f"'{str(id)}'" for id in item_ids])
+            
+            # Check PCBs
+            pcb_exists_rows = client.execute(f"SELECT id FROM pcb_results WHERE id IN ({ids_sql})")
+            existing_pcb_ids = {row[0] for row in pcb_exists_rows}
+            
+            # Check Steps
+            step_exists_rows = client.execute(f"SELECT DISTINCT pcb_result_id FROM test_steps WHERE pcb_result_id IN ({ids_sql})")
+            existing_step_pcb_ids = {row[0] for row in step_exists_rows}
+
+        # 4. Process each item
+        for i, item in enumerate(items):
+            pcb_id = item_ids[i]
+            try:
+                # Validation: Hierarchy
+                if item.channel_id not in hierarchy_map:
+                    raise ValueError(f"Channel ID {item.channel_id} has no valid hierarchy in Master Data")
+                
+                h = hierarchy_map[item.channel_id]
+                
+                inserted_this_pcb = False
+                inserted_this_steps = 0
+
+                # Need PCB?
+                if pcb_id not in existing_pcb_ids:
+                    pcb_rows_to_insert.append([
+                        pcb_id, item.channel_id, item.model_id, item.pid, item.fid,
+                        item.pcba_partno, item.start_time, item.end_time, item.test_time,
+                        item.result, item.file_path, item.jobfile,
+                        h["station_id"], h["line_id"], h["buyer_id"]
+                    ])
+                    inserted_this_pcb = True
+                    
+                    # Prepare WS message
+                    ws_messages.append({
+                        "type": "NEW_RESULT",
+                        "data": {
+                            "id": str(pcb_id),
+                            "channel_id": item.channel_id,
+                            "model_id": item.model_id,
+                            "pid": item.pid,
+                            "fid": item.fid,
+                            "pcba_partno": item.pcba_partno,
+                            "start_time": item.start_time.isoformat(),
+                            "end_time": item.end_time.isoformat() if item.end_time else None,
+                            "test_time": item.test_time,
+                            "result": item.result,
+                            "file_path": item.file_path,
+                            "jobfile": item.jobfile,
+                            "station_id": h["station_id"],
+                            "line_id": h["line_id"],
+                            "buyer_id": h["buyer_id"]
+                        }
+                    })
+
+                # Need Steps?
+                if item.steps and pcb_id not in existing_step_pcb_ids:
+                    for s in item.steps:
+                        steps_rows_to_insert.append([
+                            pcb_id, s.step_type, s.step_number, s.step_name, 
+                            s.value, s.spec_min, s.spec_max, s.result
+                        ])
+                    inserted_this_steps = len(item.steps)
+
+                # Report status
+                if not inserted_this_pcb and inserted_this_steps == 0:
+                    summary["skipped"] += 1
+                else:
+                    summary["success"] += 1
+                    results.append({
+                        "pid": item.pid,
+                        "start_time": item.start_time.isoformat(),
+                        "status": "success",
+                        "inserted_pcb": inserted_this_pcb,
+                        "inserted_steps": inserted_this_steps
+                    })
+
+            except Exception as item_err:
+                summary["failed"] += 1
+                results.append({
+                    "pid": item.pid,
+                    "start_time": item.start_time.isoformat(),
+                    "status": "error",
+                    "error": str(item_err),
+                    "data": item.dict() # Return original data so client can fix
                 })
 
-        if pcb_rows:
+        # 5. Bulk Inserts
+        if pcb_rows_to_insert:
             client.execute(
                 """INSERT INTO pcb_results (
                     id, channel_id, model_id, pid, fid, pcba_partno, 
                     start_time, end_time, test_time, result, file_path, jobfile,
                     station_id, line_id, buyer_id
                 ) VALUES""",
-                pcb_rows
-            )
-            
-        if steps_rows:
-            client.execute(
-                "INSERT INTO test_steps (pcb_result_id, step_type, step_number, step_name, value, spec_min, spec_max, result) VALUES",
-                steps_rows
+                pcb_rows_to_insert
             )
         
-        # Broadcast via WebSocket for real-time view (batch or sequentially)
+        if steps_rows_to_insert:
+            client.execute(
+                "INSERT INTO test_steps (pcb_result_id, step_type, step_number, step_name, value, spec_min, spec_max, result) VALUES",
+                steps_rows_to_insert
+            )
+
+        # 6. WS Broadcast
         for msg in ws_messages:
             await manager.broadcast(msg)
 
         return {
-            "status": "success", 
-            "count": len(items), 
-            "ng_count": len(ng_results),
-            "ng_results": ng_results
+            "status": "completed",
+            "summary": summary,
+            "details": results
         }
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error during batch insert: {str(e)}")
+        # This catch is for catastrophic failures (e.g. DB connection lost mid-process)
+        raise HTTPException(status_code=500, detail=f"Catastrophic batch error: {str(e)}")
 
 @router.post("/system/logs")
 async def ingest_system_logs(logs: List[SystemLogInput]):
