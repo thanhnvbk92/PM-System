@@ -12,15 +12,28 @@ def get_clickhouse_client():
         print(f"FAILED to connect to ClickHouse at {config.CLICKHOUSE_HOST}:{config.CLICKHOUSE_PORT}: {e}")
         return None
 
-def get_all(table_name: str):
+def get_all(table_name: str, order_by: Optional[str] = None):
     client = get_clickhouse_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database not connected")
     try:
         columns_info = client.execute(f"DESCRIBE TABLE {table_name}")
         col_names = [col[0] for col in columns_info]
-        # Lấy data - dùng FINAL để lấy bản ghi mới nhất (tránh trùng ID do ReplacingMergeTree)
-        rows = client.execute(f"SELECT * FROM {table_name} FINAL")
+        
+        # Build query
+        query = f"SELECT * FROM {table_name} FINAL"
+        
+        # Xác định order_by nếu không truyền vào
+        if not order_by:
+            if 'name' in col_names:
+                order_by = 'name'
+            elif 'id' in col_names:
+                order_by = 'id'
+        
+        if order_by:
+            query += f" ORDER BY {order_by}"
+            
+        rows = client.execute(query)
         return [dict(zip(col_names, row)) for row in rows]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
