@@ -16,7 +16,9 @@ import {
   InfoCircleOutlined,
   SafetyCertificateOutlined,
   DesktopOutlined,
-  SyncOutlined
+  SyncOutlined,
+  DeleteOutlined,
+  PoweroffOutlined
 } from '@ant-design/icons';
 import { getMasterData, getAgentHealth, sendAgentCommand, getJobStatus, downloadAgentFile, getActiveChannelIds } from '../services/api';
 
@@ -276,6 +278,49 @@ const CommandCenter = () => {
     });
   };
 
+  const onDeleteFile = (channelId, record) => {
+    Modal.confirm({
+      title: 'Xác nhận xóa file',
+      content: `Bạn có chắc chắn muốn xóa file "${record.name}" trên máy ${channelId}?`,
+      okText: 'Xóa',
+      okType: 'danger',
+      cancelText: 'Hủy',
+      onOk: async () => {
+        try {
+          const res = await sendAgentCommand(channelId, 'files/delete', { path: record.path });
+          if (res.success) {
+            message.success('Đã xóa file thành công');
+            // Refresh file list if possible
+            onSearchFiles();
+          } else {
+            message.error(`Lỗi: ${res.error}`);
+          }
+        } catch (err) {
+          message.error(`Lỗi hệ thống: ${err.message}`);
+        }
+      }
+    });
+  };
+
+  const onRestartAgent = async (channelId) => {
+    Modal.confirm({
+      title: 'Xác nhận Restart',
+      content: `Bạn có chắc chắn muốn khởi động lại ứng dụng Agent trên máy ${channelId}?`,
+      onOk: async () => {
+        try {
+          const res = await sendAgentCommand(channelId, 'restart', { delay_ms: 1500 });
+          if (res.success) {
+            message.success('Đã gửi lệnh Restart thành công');
+          } else {
+            message.error(`Lỗi: ${res.error}`);
+          }
+        } catch (err) {
+          message.error(`Lỗi hệ thống: ${err.message}`);
+        }
+      }
+    });
+  };
+
   const fileColumns = [
     { title: 'Máy', dataIndex: 'channelName', key: 'channelName', width: 100 },
     { title: 'Tên File', dataIndex: 'name', key: 'name' },
@@ -285,14 +330,25 @@ const CommandCenter = () => {
       title: 'Thao tác',
       key: 'action',
       render: (_, record) => (
-        <Button
-          type="link"
-          icon={<DownloadOutlined />}
-          onClick={() => onDownloadFile(record.channelId, record)}
-          disabled={record.type === 'folder'}
-        >
-          Tải về
-        </Button>
+        <Space>
+          <Button
+            type="link"
+            icon={<DownloadOutlined />}
+            onClick={() => onDownloadFile(record.channelId, record)}
+            disabled={record.type === 'folder'}
+          >
+            Tải về
+          </Button>
+          <Button
+            type="link"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => onDeleteFile(record.channelId, record)}
+            disabled={record.type === 'folder'}
+          >
+            Xóa
+          </Button>
+        </Space>
       )
     },
   ];
@@ -515,12 +571,17 @@ const CommandCenter = () => {
                         </Form>
                       </Card>
 
-                      <Card title="Cập nhật phần mềm" bordered={false}>
-                        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                          <CloudSyncOutlined style={{ fontSize: 48, color: '#6366f1', marginBottom: 20 }} />
-                          <p>Cập nhật Agent và các script UI Automation lên phiên bản mới nhất.</p>
+                      <Card title="Hệ thống" bordered={false}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                          <Button danger icon={<PoweroffOutlined />} onClick={() => {
+                            const selectedId = channels.find(c => c.active)?.id;
+                            if (selectedId) onRestartAgent(selectedId);
+                            else message.warning('Vui lòng chọn 1 máy để thực hiện');
+                          }} block>
+                            Khởi động lại App (Restart)
+                          </Button>
                           <Button danger icon={<SafetyCertificateOutlined />} onClick={onUpdateAgent} block>
-                            Kiểm tra & Cập nhật
+                            Kiểm tra & Cập nhật phần mềm
                           </Button>
                         </div>
                       </Card>

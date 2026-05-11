@@ -308,6 +308,19 @@ async def get_analytics_dashboard(
             LIMIT 10
         """
 
+        q_jobfile = f"""
+            SELECT if(empty(r.jobfile), 'Unknown', r.jobfile) as name, 
+                   {error_count_expr} as errors,
+                   count() as total,
+                   if(total > 0, round(errors * 100 / total, 2), 0) as rate
+            {base_from_joins}
+            {step_join}
+            WHERE {base_where}
+            GROUP BY name
+            ORDER BY rate DESC
+            LIMIT 10
+        """
+
         q_errors = f"""
             SELECT ts_out.step_name as name, count() as errors
             FROM test_steps ts_out
@@ -329,6 +342,7 @@ async def get_analytics_dashboard(
         res_line = client.execute(q_line)
         res_station = client.execute(q_station)
         res_channel = client.execute(q_channel)
+        res_jobfile = client.execute(q_jobfile)
         res_errors = client.execute(q_errors)
 
         trend_time_labels = []
@@ -351,6 +365,7 @@ async def get_analytics_dashboard(
             "by_line": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_line],
             "by_station": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_station],
             "by_channel": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_channel],
+            "by_jobfile": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_jobfile],
             "top_errors": top_errors_data
         }
     except Exception as e:

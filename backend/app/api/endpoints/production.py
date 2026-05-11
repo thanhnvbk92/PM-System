@@ -38,6 +38,23 @@ async def submit_pcb_result(data: PCBResultInput):
     if not client:
         raise HTTPException(status_code=503, detail="Database not connected")
     
+    # Filter out NG [GMES] STEP_CHECK (Main Result)
+    if data.result == "NG [GMES] STEP_CHECK":
+        return {
+            "status": "skipped",
+            "message": "Filtered out NG [GMES] STEP_CHECK",
+            "id": None
+        }
+        
+    # Filter out if any individual step is [GMES] STEP_CHECK and it is NG
+    # In this system, result can be "NG" (from JSON) or "2" (internal representation)
+    if any(s.step_name == "[GMES] STEP_CHECK" and s.result in ["NG", "2"] for s in data.steps):
+        return {
+            "status": "skipped",
+            "message": "Filtered out because of NG [GMES] STEP_CHECK step",
+            "id": None
+        }
+    
     # Get hierarchy info for de-normalization
     hierarchy = await get_channel_hierarchy(data.channel_id)
     
@@ -140,6 +157,17 @@ async def submit_pcb_result_batch(items: List[PCBResultInput]):
     
     # Summary counters
     summary = {"total": len(items), "success": 0, "failed": 0, "skipped": 0}
+
+    # Filter items
+    original_count = len(items)
+    # Filter if main result is NG [GMES] STEP_CHECK
+    items = [item for item in items if item.result != "NG [GMES] STEP_CHECK"]
+    # Filter if any step is NG [GMES] STEP_CHECK
+    items = [
+        item for item in items 
+        if not any(s.step_name == "[GMES] STEP_CHECK" and s.result in ["NG", "2"] for s in item.steps)
+    ]
+    summary["skipped"] += (original_count - len(items))
 
     try:
         # 1. Pre-calculate IDs and unique channels

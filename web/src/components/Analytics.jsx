@@ -14,6 +14,7 @@ const Analytics = () => {
   // Cross-filtering states
   const [filters, setFilters] = useState({
     channel: null,
+    jobfile: null,
     step_name: null,
     time_label: null
   });
@@ -25,6 +26,7 @@ const Analytics = () => {
     by_line: [],
     by_station: [],
     by_channel: [],
+    by_jobfile: [],
     top_errors: []
   });
   
@@ -83,6 +85,7 @@ const Analytics = () => {
     if (filters.line) params.line = filters.line;
     if (filters.station) params.station = filters.station;
     if (filters.channel) params.channel = filters.channel;
+    if (filters.jobfile) params.jobfile = filters.jobfile;
     if (filters.step_name) params.step_name = filters.step_name;
 
 
@@ -103,7 +106,7 @@ const Analytics = () => {
   };
 
   const clearFilters = () => {
-    setFilters({ line: null, station: null, channel: null, step_name: null });
+    setFilters({ line: null, station: null, channel: null, jobfile: null, step_name: null });
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v !== null);
@@ -223,6 +226,65 @@ const Analytics = () => {
               const count = params.data.count;
               if (rate === 0 && count === 0) return ''; 
               return `${rate}%\n(${count.toLocaleString()})`;
+            }
+          }
+        }
+      ]
+    };
+  };
+  
+  const getHorizontalBarRateChartOptions = (dataList, filterType, color = '#6366f1') => {
+    return {
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'shadow' },
+        formatter: (params) => {
+          const p = params[0];
+          return `${p.name}<br/>${p.marker} NG Rate: <b>${p.value}%</b> (${p.data.count.toLocaleString()})`;
+        }
+      },
+      grid: { left: '3%', right: '10%', bottom: '5%', top: '5%', containLabel: true },
+      xAxis: {
+        type: 'value',
+        axisLabel: { 
+          color: 'rgba(255, 255, 255, 0.45)',
+          formatter: '{value}%'
+        },
+        splitLine: { lineStyle: { color: '#1e293b' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: dataList.map(d => d.name),
+        axisLabel: { 
+          color: 'rgba(255, 255, 255, 0.85)', 
+          width: 200, 
+          overflow: 'breakAll',
+          fontSize: 11
+        },
+        axisLine: { lineStyle: { color: '#334155' } }
+      },
+      series: [
+        {
+          type: 'bar',
+          data: dataList.map(d => ({
+            value: d.rate,
+            count: d.value,
+            itemStyle: {
+              color: filters[filterType] === d.name ? '#f59e0b' : color,
+              opacity: (filters[filterType] && filters[filterType] !== d.name) ? 0.3 : 1
+            }
+          })),
+          borderRadius: [0, 4, 4, 0],
+          label: { 
+            show: true, 
+            position: 'right', 
+            color: 'rgba(255, 255, 255, 0.85)',
+            fontSize: 10,
+            formatter: (params) => {
+              const rate = params.value;
+              const count = params.data.count;
+              if (rate === 0 && count === 0) return '';
+              return `${rate}% (${count.toLocaleString()})`;
             }
           }
         }
@@ -404,9 +466,9 @@ const Analytics = () => {
             <Card title="NG by Channel" bordered={false} className="dark-card" bodyStyle={{ height: 250, padding: 0 }}>
               {dashboardData.by_channel.length > 0 ? (
                 <ReactECharts 
-                  option={getBarChartOptions(dashboardData.by_channel, 'channel', '#14b8a6')} 
-                  onEvents={onEvents('channel')}
-                  style={{ height: '100%' }} 
+                   option={getBarChartOptions(dashboardData.by_channel, 'channel', '#14b8a6')} 
+                   onEvents={onEvents('channel')}
+                   style={{ height: '100%' }} 
                 />
               ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}
             </Card>
@@ -419,6 +481,19 @@ const Analytics = () => {
                 <ReactECharts 
                   option={getHorizontalBarChartOptions(dashboardData.top_errors, 'step_name', '#ef4444')} 
                   onEvents={onEvents('step_name')}
+                  style={{ height: '100%' }} 
+                />
+              ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+            </Card>
+          </Col>
+
+          {/* Job File breakdown */}
+          <Col span={24}>
+            <Card title="NG by Job File" bordered={false} className="dark-card" bodyStyle={{ height: 350, padding: 0 }}>
+              {dashboardData.by_jobfile.length > 0 ? (
+                <ReactECharts 
+                  option={getHorizontalBarRateChartOptions(dashboardData.by_jobfile, 'jobfile', '#6366f1')} 
+                  onEvents={onEvents('jobfile')}
                   style={{ height: '100%' }} 
                 />
               ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}

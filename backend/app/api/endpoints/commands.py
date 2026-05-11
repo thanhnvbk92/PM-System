@@ -44,6 +44,12 @@ class UpdateParams(BaseModel):
 class ModelChangeParams(BaseModel):
     model_name: str
 
+class DeleteParams(BaseModel):
+    path: str
+
+class RestartParams(BaseModel):
+    delay_ms: int = 1500
+
 # --- Helper Logic ---
 
 async def get_agent_base_url(channel_id: int):
@@ -66,7 +72,12 @@ def get_auth_headers():
 async def agent_health(channel_id: int):
     # Ưu tiên kiểm tra WebSocket
     if channel_id in agent_manager.active_agents:
-        return {"status": "healthy", "mode": "websocket"}
+        metadata = agent_manager.agent_metadata.get(channel_id, {})
+        return {
+            "status": "healthy", 
+            "mode": "websocket",
+            **metadata
+        }
         
     base_url = await get_agent_base_url(channel_id)
     async with httpx.AsyncClient(timeout=3.0) as client:
@@ -78,6 +89,15 @@ async def agent_health(channel_id: int):
 
 @router.post("/{channel_id}/files/search")
 async def agent_file_search(channel_id: int, params: SearchParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        resp = await agent_manager.send_command(channel_id, {
+            "action": "files_search",
+            "params": params.dict()
+        }, wait_for_response=True)
+        return resp
+
+    # 2. Fallback sang HTTP
     base_url = await get_agent_base_url(channel_id)
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
@@ -104,6 +124,15 @@ async def agent_file_export(channel_id: int, params: ExportParams):
 
 @router.post("/{channel_id}/files/pull")
 async def agent_file_pull(channel_id: int, params: PullParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        resp = await agent_manager.send_command(channel_id, {
+            "action": "files/pull",
+            "params": params.dict()
+        }, wait_for_response=True)
+        return resp
+
+    # 2. Fallback sang HTTP
     base_url = await get_agent_base_url(channel_id)
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
@@ -114,6 +143,15 @@ async def agent_file_pull(channel_id: int, params: PullParams):
 
 @router.post("/{channel_id}/files/push")
 async def agent_file_push(channel_id: int, params: PushParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        resp = await agent_manager.send_command(channel_id, {
+            "action": "files/push",
+            "params": params.dict()
+        }, wait_for_response=True)
+        return resp
+
+    # 2. Fallback sang HTTP
     base_url = await get_agent_base_url(channel_id)
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
@@ -124,6 +162,15 @@ async def agent_file_push(channel_id: int, params: PushParams):
 
 @router.post("/{channel_id}/update")
 async def agent_update(channel_id: int, params: UpdateParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        success = await agent_manager.send_command(channel_id, {
+            "action": "update",
+            "params": params.dict()
+        })
+        return {"success": success, "mode": "websocket", "job_id": f"ws_upd_{channel_id}"}
+
+    # 2. Fallback sang HTTP
     base_url = await get_agent_base_url(channel_id)
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
@@ -134,6 +181,15 @@ async def agent_update(channel_id: int, params: UpdateParams):
 
 @router.post("/{channel_id}/model/change")
 async def agent_model_change(channel_id: int, params: ModelChangeParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        success = await agent_manager.send_command(channel_id, {
+            "action": "model/change",
+            "params": params.dict()
+        })
+        return {"success": success, "mode": "websocket", "job_id": f"ws_mod_{channel_id}"}
+
+    # 2. Fallback sang HTTP
     base_url = await get_agent_base_url(channel_id)
     async with httpx.AsyncClient(timeout=20.0) as client:
         try:
@@ -151,3 +207,40 @@ async def agent_job_status(channel_id: int, job_id: str):
             return resp.json()
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Agent unreachable: {str(e)}")
+@router.post("/{channel_id}/files/delete")
+async def agent_file_delete(channel_id: int, params: DeleteParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        resp = await agent_manager.send_command(channel_id, {
+            "action": "files/delete",
+            "params": params.dict()
+        }, wait_for_response=True)
+        return resp
+
+    # 2. Fallback sang HTTP
+    base_url = await get_agent_base_url(channel_id)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.request("DELETE", f"{base_url}/files/delete", headers=get_auth_headers(), json=params.dict())
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Agent error: {str(e)}")
+
+@router.post("/{channel_id}/restart")
+async def agent_restart(channel_id: int, params: RestartParams):
+    # 1. Ưu tiên WebSocket
+    if channel_id in agent_manager.active_agents:
+        resp = await agent_manager.send_command(channel_id, {
+            "action": "restart_app",
+            "params": params.dict()
+        }, wait_for_response=True)
+        return resp
+
+    # 2. Fallback sang HTTP
+    base_url = await get_agent_base_url(channel_id)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(f"{base_url}/restart", headers=get_auth_headers(), json=params.dict())
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Agent error: {str(e)}")
