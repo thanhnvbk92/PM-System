@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Radio, Spin, Empty, message, Button, Tag, DatePicker, Space } from 'antd';
+import { Card, Row, Col, Typography, Radio, Spin, Empty, message, Button, Tag, DatePicker, Space, Statistic } from 'antd';
 import { CloseCircleOutlined, FilterOutlined, CalendarOutlined } from '@ant-design/icons';
 const { RangePicker } = DatePicker;
 import dayjs from 'dayjs';
@@ -94,7 +94,16 @@ const Analytics = () => {
     setLoadTime((end - start).toFixed(0));
 
     if (res.success) {
-      setDashboardData(res.data);
+      // Merge with default fallback to prevent crashes if backend returns {}
+      setDashboardData({
+        trend: res.data.trend || { time_labels: [], series: [] },
+        by_line: res.data.by_line || [],
+        by_station: res.data.by_station || [],
+        by_channel: res.data.by_channel || [],
+        by_jobfile: res.data.by_jobfile || [],
+        top_errors: res.data.top_errors || [],
+        summary: res.data.summary || { total_unique: 0, true_errors: 0, true_ng_rate: 0, total_logs: 0, false_calls: 0 }
+      });
     } else {
       message.error("Failed to load dashboard data: " + res.error);
     }
@@ -136,13 +145,18 @@ const Analytics = () => {
       },
       yAxis: {
         type: 'value',
-        name: 'NG Rate (%)',
+        name: 'Rate (%)',
         nameTextStyle: { color: 'rgba(255, 255, 255, 0.45)' },
         axisLabel: { 
           color: 'rgba(255, 255, 255, 0.45)',
           formatter: '{value}%'
         },
         splitLine: { lineStyle: { color: '#1e293b' } }
+      },
+      legend: {
+        show: true,
+        textStyle: { color: '#cbd5e1' },
+        bottom: 0
       },
       series: data.series ? data.series.map(s => ({
         ...s,
@@ -153,7 +167,7 @@ const Analytics = () => {
           value: s.rates ? s.rates[idx] : 0,
           count: val
         })) : [],
-        itemStyle: { color: '#3b82f6' },
+        itemStyle: { color: s.color || '#3b82f6' },
         label: {
           show: true,
           position: 'top',
@@ -163,15 +177,15 @@ const Analytics = () => {
             const rate = params.value;
             const count = params.data.count;
             if (rate === 0 && count === 0) return '';
-            return `${rate}%\n(${count.toLocaleString()})`;
+            return `${rate}%`;
           }
         },
         areaStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(59, 130, 246, 0.5)' },
-              { offset: 1, color: 'rgba(59, 130, 246, 0.0)' }
+              { offset: 0, color: s.color ? `${s.color}66` : 'rgba(59, 130, 246, 0.5)' },
+              { offset: 1, color: s.color ? `${s.color}00` : 'rgba(59, 130, 246, 0.0)' }
             ]
           }
         }
@@ -415,12 +429,54 @@ const Analytics = () => {
         </div>
       </div>
 
+      {/* Summary Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <Card bordered={false} className="dark-card" bodyStyle={{ padding: '16px' }}>
+            <Statistic 
+              title={<span style={{ color: '#94a3b8' }}>True NG Rate</span>}
+              value={dashboardData.summary?.true_ng_rate || 0}
+              precision={2}
+              suffix="%"
+              valueStyle={{ color: '#ef4444', fontWeight: 'bold' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card bordered={false} className="dark-card" bodyStyle={{ padding: '16px' }}>
+            <Statistic 
+              title={<span style={{ color: '#94a3b8' }}>True NG Count</span>}
+              value={dashboardData.summary?.true_errors || 0}
+              valueStyle={{ color: '#ef4444' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card bordered={false} className="dark-card" bodyStyle={{ padding: '16px' }}>
+            <Statistic 
+              title={<span style={{ color: '#94a3b8' }}>User OK (False Call)</span>}
+              value={dashboardData.summary?.false_calls || 0}
+              valueStyle={{ color: '#f59e0b' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card bordered={false} className="dark-card" bodyStyle={{ padding: '16px' }}>
+            <Statistic 
+              title={<span style={{ color: '#94a3b8' }}>Total Unique PCB</span>}
+              value={dashboardData.summary?.total_unique || 0}
+              valueStyle={{ color: '#3b82f6' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
       <Spin spinning={loading} size="large">
         <Row gutter={[16, 16]}>
           
           {/* Main Trend Chart */}
           <Col span={24}>
-            <Card title="Trend Over Time" bordered={false} className="dark-card" bodyStyle={{ height: 300, padding: 0 }}>
+            <Card title="Production Trends (True NG vs User OK)" bordered={false} className="dark-card" bodyStyle={{ height: 350, padding: 0 }}>
               {dashboardData.trend.series.length > 0 ? (
                 <ReactECharts 
                   option={getLineChartOptions(dashboardData.trend)} 

@@ -164,7 +164,7 @@ const Dashboard = () => {
       padding: 16
     },
     legend: { 
-      data: ['Pass Ratio', 'Total Production'], 
+      data: ['Pass Ratio', 'True NG Rate', 'Total Production'], 
       bottom: 0, 
       textStyle: { color: '#cbd5e1', fontSize: 14, fontWeight: '500' },
       icon: 'roundRect',
@@ -182,8 +182,8 @@ const Dashboard = () => {
     yAxis: [
       { 
         type: 'value',
-        name: 'Pass Ratio',
-        min: 'dataMin',
+        name: 'Rate (%)',
+        min: 0,
         max: 100,
         splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } },
         axisLabel: { formatter: '{value} %', color: '#94a3b8', fontWeight: '500' },
@@ -207,26 +207,32 @@ const Dashboard = () => {
         yAxisIndex: 0,
         smooth: 0.4,
         symbol: 'circle',
-        symbolSize: 10,
-        showSymbol: true,
-        label: { 
-          show: true, 
-          position: 'top', 
-          formatter: '{c}%', 
-          color: '#10b981', 
-          fontWeight: '800',
-          fontSize: 13,
-          backgroundColor: 'rgba(15, 23, 42, 0.7)',
-          padding: [4, 6],
-          borderRadius: 4
-        },
-        itemStyle: { color: '#10b981', borderColor: '#fff', borderWidth: 2 },
-        lineStyle: { width: 4, color: '#10b981', shadowColor: 'rgba(16, 185, 129, 0.4)', shadowBlur: 10, shadowOffsetY: 5 },
+        symbolSize: 8,
+        itemStyle: { color: '#10b981' },
+        lineStyle: { width: 3, color: '#10b981' },
         areaStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: 'rgba(16, 185, 129, 0.3)' }, { offset: 1, color: 'rgba(16, 185, 129, 0)' }]
+            colorStops: [{ offset: 0, color: 'rgba(16, 185, 129, 0.2)' }, { offset: 1, color: 'rgba(16, 185, 129, 0)' }]
           }
+        }
+      },
+      {
+        name: 'True NG Rate',
+        data: trends[trendType]?.map(d => d.true_ng_rate) || [],
+        type: 'line',
+        yAxisIndex: 0,
+        smooth: 0.4,
+        symbol: 'circle',
+        symbolSize: 8,
+        itemStyle: { color: '#ef4444' },
+        lineStyle: { width: 3, color: '#ef4444' },
+        label: {
+            show: true,
+            position: 'top',
+            formatter: '{c}%',
+            color: '#ef4444',
+            fontWeight: 'bold'
         }
       },
       {
@@ -236,19 +242,9 @@ const Dashboard = () => {
         yAxisIndex: 1,
         smooth: 0.4,
         symbol: 'emptyCircle',
-        symbolSize: 8,
-        label: { 
-          show: true, 
-          position: 'bottom', 
-          color: '#8b5cf6', 
-          fontWeight: 'bold',
-          fontSize: 12,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)',
-          padding: [2, 6],
-          borderRadius: 4
-        },
+        symbolSize: 6,
         itemStyle: { color: '#8b5cf6' },
-        lineStyle: { width: 3, type: 'dashed', color: '#8b5cf6', shadowColor: 'rgba(139, 92, 246, 0.3)', shadowBlur: 8, shadowOffsetY: 3 }
+        lineStyle: { width: 2, type: 'dashed', color: '#8b5cf6' }
       }
     ]
   };

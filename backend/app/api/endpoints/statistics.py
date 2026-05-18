@@ -115,6 +115,28 @@ async def get_production_trends():
         
         res_m = client.execute(query_months)
         
+        # Calculate True NG Rate using pid (Unique PCBs)
+        # Note: This is more intensive than the hourly aggregation, so we do it per month
+        query_true_m = """
+            SELECT 
+                toStartOfMonth(start_time) as m,
+                countIf(final_result != 'OK' AND final_result != '1') as true_errors,
+                count() as total_unique,
+                if(total_unique > 0, round(true_errors * 100 / total_unique, 2), 0) as true_rate
+            FROM (
+                SELECT 
+                    pid,
+                    toStartOfMonth(start_time) as start_time,
+                    argMax(result, start_time) as final_result
+                FROM pcb_results
+                WHERE start_time >= addMonths(now(), -12)
+                GROUP BY pid, toStartOfMonth(start_time)
+            )
+            GROUP BY m ORDER BY m
+        """
+        res_true_m = client.execute(query_true_m)
+        true_rate_map = {r[0].strftime("%Y-%m"): r[3] for r in res_true_m}
+        
         # Calculate ratio: (total - errors) / total * 100
         months_data = []
         for r in res_m:
@@ -122,12 +144,100 @@ async def get_production_trends():
             total = r[1]
             errors = r[2]
             ratio = round(((total - errors) / total) * 100, 2) if total > 0 else 100
-            months_data.append({"date": date_str, "ratio": ratio, "total": total})
+            true_rate = true_rate_map.get(date_str, 0)
+            months_data.append({
+                "date": date_str, 
+                "ratio": ratio, 
+                "total": total,
+                "true_ng_rate": true_rate
+            })
+            
+        # 5 Weeks Trend
+        query_weeks = """
+            SELECT 
+                toStartOfWeek(hour) as w, 
+                countMerge(total_count) as total,
+                countMergeIf(total_count, result = 2) as errors
+            FROM pcb_stats_hourly
+            WHERE hour >= addWeeks(now(), -5)
+            GROUP BY w ORDER BY w
+        """
+        res_w = client.execute(query_weeks)
+        
+        query_true_w = """
+            SELECT 
+                toStartOfWeek(start_time) as w,
+                countIf(final_result != 'OK' AND final_result != '1') as true_errors,
+                count() as total_unique,
+                if(total_unique > 0, round(true_errors * 100 / total_unique, 2), 0) as true_rate
+            FROM (
+                SELECT 
+                    pid,
+                    toStartOfWeek(start_time) as start_time,
+                    argMax(result, start_time) as final_result
+                FROM pcb_results
+                WHERE start_time >= addWeeks(now(), -5)
+                GROUP BY pid, toStartOfWeek(start_time)
+            )
+            GROUP BY w ORDER BY w
+        """
+        res_true_w = client.execute(query_true_w)
+        true_rate_map_w = {r[0].strftime("%Y-%W"): r[3] for r in res_true_w}
+        
+        weeks_data = []
+        for r in res_w:
+            date_str = r[0].strftime("%Y-%W")
+            total = r[1]
+            errors = r[2]
+            ratio = round(((total - errors) / total) * 100, 2) if total > 0 else 100
+            true_rate = true_rate_map_w.get(date_str, 0)
+            weeks_data.append({"date": f"Week {date_str.split('-')[1]}", "ratio": ratio, "total": total, "true_ng_rate": true_rate})
+
+        # 7 Days Trend
+        query_days = """
+            SELECT 
+                toStartOfDay(hour) as d, 
+                countMerge(total_count) as total,
+                countMergeIf(total_count, result = 2) as errors
+            FROM pcb_stats_hourly
+            WHERE hour >= addDays(now(), -7)
+            GROUP BY d ORDER BY d
+        """
+        res_d = client.execute(query_days)
+        
+        query_true_d = """
+            SELECT 
+                toStartOfDay(start_time) as d,
+                countIf(final_result != 'OK' AND final_result != '1') as true_errors,
+                count() as total_unique,
+                if(total_unique > 0, round(true_errors * 100 / total_unique, 2), 0) as true_rate
+            FROM (
+                SELECT 
+                    pid,
+                    toStartOfDay(start_time) as start_time,
+                    argMax(result, start_time) as final_result
+                FROM pcb_results
+                WHERE start_time >= addDays(now(), -7)
+                GROUP BY pid, toStartOfDay(start_time)
+            )
+            GROUP BY d ORDER BY d
+        """
+        res_true_d = client.execute(query_true_d)
+        true_rate_map_d = {r[0].strftime("%Y-%m-%d"): r[3] for r in res_true_d}
+        
+        days_data = []
+        for r in res_d:
+            date_str = r[0].strftime("%Y-%m-%d")
+            total = r[1]
+            errors = r[2]
+            ratio = round(((total - errors) / total) * 100, 2) if total > 0 else 100
+            true_rate = true_rate_map_d.get(date_str, 0)
+            days_data.append({"date": date_str, "ratio": ratio, "total": total, "true_ng_rate": true_rate})
             
         return {
             "months": months_data,
-            "weeks": [],
-            "days": []
+            "weeks": weeks_data,
+            "days": days_data
         }
     except Exception as e:
         print(f"Error getting trends: {e}")
@@ -262,7 +372,9 @@ async def get_analytics_dashboard(
             SELECT {date_func} as time_label, 
                    {error_count_expr} as errors,
                    count() as total,
-                   if(total > 0, round(errors * 100 / total, 2), 0) as rate
+                   if(total > 0, round(errors * 100 / total, 2), 0) as ng_rate,
+                   (total - errors) as ok_count,
+                   if(total > 0, round(ok_count * 100 / total, 2), 0) as ok_rate
             {base_from_joins}
             {step_join}
             WHERE {base_where}
@@ -338,29 +450,110 @@ async def get_analytics_dashboard(
             LIMIT 10
         """
 
+        q_true_trend = f"""
+            SELECT 
+                time_label,
+                countIf(final_result != 'OK' AND final_result != '1') as true_errors,
+                count() as total_unique,
+                if(total_unique > 0, round(true_errors * 100 / total_unique, 2), 0) as true_rate
+            FROM (
+                SELECT 
+                    r.pid as pid,
+                    {date_func} as time_label,
+                    argMax(r.result, r.start_time) as final_result
+                {base_from_joins}
+                WHERE {base_where}
+                GROUP BY r.pid, time_label
+            )
+            GROUP BY time_label
+            ORDER BY time_label
+        """
+
+        q_true_summary = f"""
+            SELECT 
+                count() as total_unique,
+                countIf(final_result != 'OK' AND final_result != '1') as true_errors
+            FROM (
+                SELECT 
+                    r.pid as pid,
+                    argMax(r.result, r.start_time) as final_result
+                {base_from_joins}
+                WHERE {base_where}
+                GROUP BY r.pid
+            )
+        """
+
         res_trend = client.execute(q_trend)
+        res_true_trend = client.execute(q_true_trend)
         res_line = client.execute(q_line)
         res_station = client.execute(q_station)
         res_channel = client.execute(q_channel)
         res_jobfile = client.execute(q_jobfile)
         res_errors = client.execute(q_errors)
+        res_true_summary = client.execute(q_true_summary)
+
+        total_unique = res_true_summary[0][0]
+        true_errors = res_true_summary[0][1]
+        true_ng_rate = round(true_errors * 100 / total_unique, 2) if total_unique > 0 else 0
 
         trend_time_labels = []
-        trend_series_data = []
-        trend_rate_data = []
+        trend_ng_counts = []
+        trend_ng_rates = []
+        trend_ok_counts = []
+        trend_ok_rates = []
+        
         for row in res_trend:
             t_label = row[0].strftime(format_str) if hasattr(row[0], 'strftime') else str(row[0])
             trend_time_labels.append(t_label)
-            trend_series_data.append(row[1])
-            trend_rate_data.append(row[3]) # Index 3 is rate
+            trend_ng_counts.append(row[1])
+            trend_ng_rates.append(row[3]) # Index 3 is ng_rate
+            trend_ok_counts.append(row[4]) # Index 4 is ok_count
+            trend_ok_rates.append(row[5])  # Index 5 is ok_rate
+            
+        # Map True NG rates to time labels
+        true_rate_map = {}
+        for row in res_true_trend:
+            t_label = row[0].strftime(format_str) if hasattr(row[0], 'strftime') else str(row[0])
+            true_rate_map[t_label] = (row[1], row[3]) # (count, rate)
+            
+        trend_true_counts = []
+        trend_true_rates = []
+        trend_user_ok_counts = []
+        trend_user_ok_rates = []
+        
+        for i, t_label in enumerate(trend_time_labels):
+            true_count, true_rate = true_rate_map.get(t_label, (0, 0))
+            ng_count = trend_ng_counts[i]
+            total_count = trend_ng_counts[i] + trend_ok_counts[i]
+            
+            # User OK (False Call) = NG Count (AI) - True NG Count
+            # Note: This is an approximation if they happen in the same time bucket
+            user_ok_count = max(0, ng_count - true_count)
+            user_ok_rate = round(user_ok_count * 100 / total_count, 2) if total_count > 0 else 0
+            
+            trend_true_counts.append(true_count)
+            trend_true_rates.append(true_rate)
+            trend_user_ok_counts.append(user_ok_count)
+            trend_user_ok_rates.append(user_ok_rate)
             
         top_errors_data = [{"name": r[0], "value": r[1]} for r in res_errors]
         top_errors_data.reverse()
         
         return {
+            "summary": {
+                "total_unique": total_unique,
+                "true_errors": true_errors,
+                "true_ng_rate": true_ng_rate,
+                "total_logs": sum(trend_ng_counts) + sum(trend_ok_counts),
+                "false_calls": sum(trend_user_ok_counts)
+            },
             "trend": {
                 "time_labels": trend_time_labels,
-                "series": [{"name": "NG Count", "type": "line", "smooth": True, "data": trend_series_data, "rates": trend_rate_data}]
+                "series": [
+                    {"name": "OK", "type": "line", "smooth": True, "data": trend_ok_counts, "rates": trend_ok_rates, "color": "#10b981"},
+                    {"name": "True NG", "type": "line", "smooth": True, "data": trend_true_counts, "rates": trend_true_rates, "color": "#ef4444"},
+                    {"name": "User OK", "type": "line", "smooth": True, "data": trend_user_ok_counts, "rates": trend_user_ok_rates, "color": "#f59e0b"}
+                ]
             },
             "by_line": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_line],
             "by_station": [{"name": r[0], "value": r[1], "rate": r[3]} for r in res_station],
