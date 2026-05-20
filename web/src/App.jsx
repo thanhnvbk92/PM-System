@@ -29,9 +29,19 @@ function App() {
   const currentPath = location.pathname.split('/')[1] || 'dashboard';
 
   useEffect(() => {
+    let failureCount = 0;
     const fetchStatus = async () => {
       const result = await checkHealth();
-      setIsServerConnected(result.success);
+      if (result.success) {
+        failureCount = 0;
+        setIsServerConnected(true);
+      } else {
+        failureCount += 1;
+        // Chỉ thực sự báo Offline nếu bị lỗi liên tiếp 3 lần trở lên
+        if (failureCount >= 3) {
+          setIsServerConnected(false);
+        }
+      }
     };
     fetchStatus();
     const interval = setInterval(fetchStatus, 30000);

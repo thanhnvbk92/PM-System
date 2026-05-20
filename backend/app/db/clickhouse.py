@@ -1,45 +1,45 @@
+import threading
 from clickhouse_driver import Client
 from fastapi import HTTPException
 from app.core import config
 from typing import List, Optional
 
-_clickhouse_client = None
+_local_storage = threading.local()
 
 def get_clickhouse_client():
-    global _clickhouse_client
-    if _clickhouse_client is None:
+    if not hasattr(_local_storage, 'client') or _local_storage.client is None:
         try:
-            # Khởi tạo client ClickHouse với timeout hợp lý để tránh bị block lâu
-            _clickhouse_client = Client(
+            # Khởi tạo client ClickHouse riêng cho thread hiện tại
+            _local_storage.client = Client(
                 config.CLICKHOUSE_HOST, 
                 port=config.CLICKHOUSE_PORT,
                 connect_timeout=3,
                 send_receive_timeout=10
             )
         except Exception as e:
-            print(f"FAILED to initialize ClickHouse client: {e}")
-            _clickhouse_client = None
+            print(f"FAILED to initialize ClickHouse client on thread {threading.get_ident()}: {e}")
+            _local_storage.client = None
             return None
             
     try:
-        # Kiểm tra xem kết nối hiện tại còn hoạt động không
-        _clickhouse_client.execute("SELECT 1")
-        return _clickhouse_client
+        # Kiểm tra xem kết nối của thread này còn hoạt động không
+        _local_storage.client.execute("SELECT 1")
+        return _local_storage.client
     except Exception as e:
-        print(f"ClickHouse connection lost, reconnecting... Error: {e}")
+        print(f"ClickHouse connection lost on thread {threading.get_ident()}, reconnecting... Error: {e}")
         try:
-            # Nếu mất kết nối, thử khởi tạo lại một lần nữa
-            _clickhouse_client = Client(
+            # Nếu mất kết nối, thử khởi tạo lại một kết nối mới cho thread này
+            _local_storage.client = Client(
                 config.CLICKHOUSE_HOST, 
                 port=config.CLICKHOUSE_PORT,
                 connect_timeout=3,
                 send_receive_timeout=10
             )
-            _clickhouse_client.execute("SELECT 1")
-            return _clickhouse_client
+            _local_storage.client.execute("SELECT 1")
+            return _local_storage.client
         except Exception as ex:
-            print(f"FAILED to reconnect to ClickHouse: {ex}")
-            _clickhouse_client = None
+            print(f"FAILED to reconnect to ClickHouse on thread {threading.get_ident()}: {ex}")
+            _local_storage.client = None
             return None
 
 def get_all(table_name: str, order_by: Optional[str] = None):
