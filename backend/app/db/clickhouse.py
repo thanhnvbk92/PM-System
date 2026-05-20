@@ -3,14 +3,44 @@ from fastapi import HTTPException
 from app.core import config
 from typing import List, Optional
 
+_clickhouse_client = None
+
 def get_clickhouse_client():
+    global _clickhouse_client
+    if _clickhouse_client is None:
+        try:
+            # Khởi tạo client ClickHouse với timeout hợp lý để tránh bị block lâu
+            _clickhouse_client = Client(
+                config.CLICKHOUSE_HOST, 
+                port=config.CLICKHOUSE_PORT,
+                connect_timeout=3,
+                send_receive_timeout=10
+            )
+        except Exception as e:
+            print(f"FAILED to initialize ClickHouse client: {e}")
+            _clickhouse_client = None
+            return None
+            
     try:
-        client = Client(config.CLICKHOUSE_HOST, port=config.CLICKHOUSE_PORT)
-        client.execute("SELECT 1")
-        return client
+        # Kiểm tra xem kết nối hiện tại còn hoạt động không
+        _clickhouse_client.execute("SELECT 1")
+        return _clickhouse_client
     except Exception as e:
-        print(f"FAILED to connect to ClickHouse at {config.CLICKHOUSE_HOST}:{config.CLICKHOUSE_PORT}: {e}")
-        return None
+        print(f"ClickHouse connection lost, reconnecting... Error: {e}")
+        try:
+            # Nếu mất kết nối, thử khởi tạo lại một lần nữa
+            _clickhouse_client = Client(
+                config.CLICKHOUSE_HOST, 
+                port=config.CLICKHOUSE_PORT,
+                connect_timeout=3,
+                send_receive_timeout=10
+            )
+            _clickhouse_client.execute("SELECT 1")
+            return _clickhouse_client
+        except Exception as ex:
+            print(f"FAILED to reconnect to ClickHouse: {ex}")
+            _clickhouse_client = None
+            return None
 
 def get_all(table_name: str, order_by: Optional[str] = None):
     client = get_clickhouse_client()
