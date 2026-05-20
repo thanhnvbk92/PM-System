@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Radio, Spin, Empty, message, Button, Tag, DatePicker, Space, Statistic } from 'antd';
+import { Card, Row, Col, Typography, Radio, Spin, Empty, message, Button, Tag, DatePicker, Space, Statistic, Select } from 'antd';
 import { CloseCircleOutlined, FilterOutlined, CalendarOutlined } from '@ant-design/icons';
 const { RangePicker } = DatePicker;
 import dayjs from 'dayjs';
 import ReactECharts from 'echarts-for-react';
-import { getAnalyticsDashboard } from '../services/api';
+import { getAnalyticsDashboard, getMasterData } from '../services/api';
 
 const { Title, Text } = Typography;
 
@@ -13,6 +13,8 @@ const Analytics = () => {
   
   // Cross-filtering states
   const [filters, setFilters] = useState({
+    line: null,
+    station: null,
     channel: null,
     jobfile: null,
     step_name: null,
@@ -20,6 +22,11 @@ const Analytics = () => {
   });
 
   const [customRange, setCustomRange] = useState(null);
+
+  // Master Data Lists for Select Dropdowns
+  const [lines, setLines] = useState([]);
+  const [stations, setStations] = useState([]);
+  const [channels, setChannels] = useState([]);
 
   const [dashboardData, setDashboardData] = useState({
     trend: { time_labels: [], series: [] },
@@ -32,6 +39,25 @@ const Analytics = () => {
   
   const [loadTime, setLoadTime] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Fetch Master Data lists once on component mount
+  useEffect(() => {
+    const fetchMasterData = async () => {
+      try {
+        const [resLines, resStations, resChannels] = await Promise.all([
+          getMasterData('lines'),
+          getMasterData('stations'),
+          getMasterData('channels')
+        ]);
+        if (resLines.success) setLines(resLines.data);
+        if (resStations.success) setStations(resStations.data);
+        if (resChannels.success) setChannels(resChannels.data);
+      } catch (err) {
+        console.error("Error fetching master data:", err);
+      }
+    };
+    fetchMasterData();
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
@@ -116,6 +142,83 @@ const Analytics = () => {
 
   const clearFilters = () => {
     setFilters({ line: null, station: null, channel: null, jobfile: null, step_name: null });
+  };
+
+  // Helper filters for Select cascading logic
+  const getFilteredStationsForSelect = () => {
+    if (!filters.line) return stations;
+    const selectedLine = lines.find(l => l.name === filters.line);
+    if (!selectedLine) return stations;
+    return stations.filter(s => s.line_id === selectedLine.id);
+  };
+
+  const getFilteredChannelsForSelect = () => {
+    if (!filters.station) {
+      if (filters.line) {
+        const selectedLine = lines.find(l => l.name === filters.line);
+        if (selectedLine) {
+          const lineStations = stations.filter(s => s.line_id === selectedLine.id);
+          const stationIds = lineStations.map(s => s.id);
+          return channels.filter(c => stationIds.includes(c.station_id));
+        }
+      }
+      return channels;
+    }
+    const selectedStation = stations.find(s => s.name === filters.station);
+    if (!selectedStation) return channels;
+    return channels.filter(c => c.station_id === selectedStation.id);
+  };
+
+  const handleLineSelect = (lineName) => {
+    setFilters(prev => {
+      const nextFilters = { ...prev, line: lineName || null };
+      if (!lineName) return nextFilters;
+      if (prev.station) {
+        const currentStation = stations.find(s => s.name === prev.station);
+        const selectedLine = lines.find(l => l.name === lineName);
+        if (currentStation && selectedLine && currentStation.line_id !== selectedLine.id) {
+          nextFilters.station = null;
+          nextFilters.channel = null;
+        }
+      }
+      return nextFilters;
+    });
+  };
+
+  const handleStationSelect = (stationName) => {
+    setFilters(prev => {
+      const nextFilters = { ...prev, station: stationName || null };
+      if (!stationName) return nextFilters;
+      const selectedStation = stations.find(s => s.name === stationName);
+      if (selectedStation) {
+        const parentLine = lines.find(l => l.id === selectedStation.line_id);
+        if (parentLine) nextFilters.line = parentLine.name;
+        if (prev.channel) {
+          const currentChannel = channels.find(c => c.name === prev.channel);
+          if (currentChannel && currentChannel.station_id !== selectedStation.id) {
+            nextFilters.channel = null;
+          }
+        }
+      }
+      return nextFilters;
+    });
+  };
+
+  const handleChannelSelect = (channelName) => {
+    setFilters(prev => {
+      const nextFilters = { ...prev, channel: channelName || null };
+      if (!channelName) return nextFilters;
+      const selectedChannel = channels.find(c => c.name === channelName);
+      if (selectedChannel) {
+        const parentStation = stations.find(s => s.id === selectedChannel.station_id);
+        if (parentStation) {
+          nextFilters.station = parentStation.name;
+          const parentLine = lines.find(l => l.id === parentStation.line_id);
+          if (parentLine) nextFilters.line = parentLine.name;
+        }
+      }
+      return nextFilters;
+    });
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v !== null);
@@ -408,6 +511,48 @@ const Analytics = () => {
             placeholder={['Ngày bắt đầu', 'Ngày kết thúc']}
             style={{ borderRadius: '6px', background: '#1e293b', borderColor: '#334155' }}
           />
+
+          <Select
+            allowClear
+            showSearch
+            placeholder="Lọc theo Line"
+            value={filters.line}
+            onChange={handleLineSelect}
+            style={{ width: 150 }}
+            optionFilterProp="children"
+          >
+            {lines.map(l => (
+              <Select.Option key={l.id} value={l.name}>{l.name}</Select.Option>
+            ))}
+          </Select>
+
+          <Select
+            allowClear
+            showSearch
+            placeholder="Lọc theo Station"
+            value={filters.station}
+            onChange={handleStationSelect}
+            style={{ width: 180 }}
+            optionFilterProp="children"
+          >
+            {getFilteredStationsForSelect().map(s => (
+              <Select.Option key={s.id} value={s.name}>{s.name}</Select.Option>
+            ))}
+          </Select>
+
+          <Select
+            allowClear
+            showSearch
+            placeholder="Lọc theo Channel"
+            value={filters.channel}
+            onChange={handleChannelSelect}
+            style={{ width: 180 }}
+            optionFilterProp="children"
+          >
+            {getFilteredChannelsForSelect().map(c => (
+              <Select.Option key={c.id} value={c.name}>{c.name}</Select.Option>
+            ))}
+          </Select>
 
           {loadTime && (
             <Text type="secondary" style={{ fontSize: '13px' }}>

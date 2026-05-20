@@ -11,6 +11,7 @@ async def search_logs(
     buyer_id: Optional[int] = Query(None), 
     line_id: Optional[int] = Query(None),
     station_id: Optional[int] = Query(None), 
+    channel_id: Optional[int] = Query(None), 
     result: Optional[str] = Query(None)
 ):
     client = get_clickhouse_client()
@@ -19,8 +20,9 @@ async def search_logs(
     where_clauses = ["1=1"]
     if pid: where_clauses.append(f"pid ILIKE '%{pid}%'")
     if buyer_id: where_clauses.append(f"l.buyer_id = {buyer_id}")
-    if line_id: where_clauses.append(f"l.line_id = {line_id}")
-    if station_id: where_clauses.append(f"l.station_id = {station_id}")
+    if line_id: where_clauses.append(f"s.line_id = {line_id}")
+    if station_id: where_clauses.append(f"c.station_id = {station_id}")
+    if channel_id: where_clauses.append(f"l.channel_id = {channel_id}")
     if result: where_clauses.append(f"result = '{result}'")
     
     where_str = " AND ".join(where_clauses)
@@ -52,7 +54,14 @@ async def search_logs(
         """
         rows = client.execute(query)
         
-        count_query = f"SELECT count() FROM pcb_results l WHERE {where_str}"
+        count_query = f"""
+            SELECT count() 
+            FROM pcb_results l 
+            ANY LEFT JOIN channels c ON l.channel_id = c.id
+            ANY LEFT JOIN stations s ON c.station_id = s.id
+            ANY LEFT JOIN lines ln ON s.line_id = ln.id
+            WHERE {where_str}
+        """
         total_res = client.execute(count_query)
         total = total_res[0][0] if total_res else 0
         

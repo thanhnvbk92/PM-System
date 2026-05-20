@@ -13,6 +13,7 @@ const LogViewer = ({ isServerConnected }) => {
     pid: '',
     line_id: null,
     station_id: null,
+    channel_id: null,
     result: null
   });
   const [pagination, setPagination] = useState({
@@ -45,6 +46,73 @@ const LogViewer = ({ isServerConnected }) => {
     if (channelsRes.success) setMasterData(prev => ({ ...prev, channels: channelsRes.data }));
   };
 
+  // Helper filters for Cascading Selects
+  const getFilteredStations = () => {
+    if (!filters.line_id) return masterData.stations;
+    return masterData.stations.filter(s => s.line_id === filters.line_id);
+  };
+
+  const getFilteredChannels = () => {
+    if (!filters.station_id) {
+      if (filters.line_id) {
+        const lineStations = masterData.stations.filter(s => s.line_id === filters.line_id);
+        const stationIds = lineStations.map(s => s.id);
+        return masterData.channels.filter(c => stationIds.includes(c.station_id));
+      }
+      return masterData.channels;
+    }
+    return masterData.channels.filter(c => c.station_id === filters.station_id);
+  };
+
+  const handleLineChange = (val) => {
+    setFilters(prev => {
+      const nextFilters = { ...prev, line_id: val || null };
+      if (!val) return nextFilters;
+      if (prev.station_id) {
+        const currentStation = masterData.stations.find(s => s.id === prev.station_id);
+        if (currentStation && currentStation.line_id !== val) {
+          nextFilters.station_id = null;
+          nextFilters.channel_id = null;
+        }
+      }
+      return nextFilters;
+    });
+  };
+
+  const handleStationChange = (val) => {
+    setFilters(prev => {
+      const nextFilters = { ...prev, station_id: val || null };
+      if (!val) return nextFilters;
+      const selectedStation = masterData.stations.find(s => s.id === val);
+      if (selectedStation) {
+        nextFilters.line_id = selectedStation.line_id;
+        if (prev.channel_id) {
+          const currentChannel = masterData.channels.find(c => c.id === prev.channel_id);
+          if (currentChannel && currentChannel.station_id !== val) {
+            nextFilters.channel_id = null;
+          }
+        }
+      }
+      return nextFilters;
+    });
+  };
+
+  const handleChannelChange = (val) => {
+    setFilters(prev => {
+      const nextFilters = { ...prev, channel_id: val || null };
+      if (!val) return nextFilters;
+      const selectedChannel = masterData.channels.find(c => c.id === val);
+      if (selectedChannel) {
+        nextFilters.station_id = selectedChannel.station_id;
+        const parentStation = masterData.stations.find(s => s.id === selectedChannel.station_id);
+        if (parentStation) {
+          nextFilters.line_id = parentStation.line_id;
+        }
+      }
+      return nextFilters;
+    });
+  };
+
   const fetchLogs = async (page = 1, pageSize = pagination.pageSize) => {
     if (!isServerConnected) return;
     setLoading(true);
@@ -56,6 +124,7 @@ const LogViewer = ({ isServerConnected }) => {
     if (filters.pid) params.pid = filters.pid;
     if (filters.line_id) params.line_id = filters.line_id;
     if (filters.station_id) params.station_id = filters.station_id;
+    if (filters.channel_id) params.channel_id = filters.channel_id;
     if (filters.result) params.result = filters.result;
 
     const result = await searchLogs(params);
@@ -210,14 +279,38 @@ const LogViewer = ({ isServerConnected }) => {
             placeholder="Select Line" 
             style={{ width: 140 }} 
             allowClear
-            onChange={val => setFilters({...filters, line_id: val})}
+            value={filters.line_id}
+            onChange={handleLineChange}
           >
             {masterData.lines.map(l => <Option key={l.id} value={l.id}>{l.name}</Option>)}
+          </Select>
+          <Select 
+            placeholder="Select Station" 
+            style={{ width: 160 }} 
+            allowClear
+            showSearch
+            optionFilterProp="children"
+            value={filters.station_id}
+            onChange={handleStationChange}
+          >
+            {getFilteredStations().map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
+          </Select>
+          <Select 
+            placeholder="Select Channel" 
+            style={{ width: 160 }} 
+            allowClear
+            showSearch
+            optionFilterProp="children"
+            value={filters.channel_id}
+            onChange={handleChannelChange}
+          >
+            {getFilteredChannels().map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
           </Select>
           <Select 
             placeholder="Result" 
             style={{ width: 100 }} 
             allowClear
+            value={filters.result}
             onChange={val => setFilters({...filters, result: val})}
           >
             <Option value="OK">OK</Option>
@@ -226,7 +319,7 @@ const LogViewer = ({ isServerConnected }) => {
           <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchLogs(1)} style={{ borderRadius: '6px', background: '#3b82f6' }}>
             Search
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={() => setFilters({ pid: '', line_id: null, station_id: null, result: null })} style={{ borderRadius: '6px', background: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}>
+          <Button icon={<ReloadOutlined />} onClick={() => setFilters({ pid: '', line_id: null, station_id: null, channel_id: null, result: null })} style={{ borderRadius: '6px', background: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}>
             Reset
           </Button>
         </Space>
